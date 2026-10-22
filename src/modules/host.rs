@@ -51,9 +51,6 @@ pub const SERVER_KINDS: [&str; 3] = ["InprocServer32", "LocalServer32", "InprocH
 
 #[cfg(windows)]
 pub const CLSID_PATH: &str = "Software\\Classes\\CLSID";
-#[cfg(windows)]
-/// ERROR_NO_MORE_ITEMS: the only winerror that means "enumeration finished".
-const ERROR_NO_MORE_ITEMS: i32 = 259;
 /// DRIVE_REMOTE from winbase.h: GetDriveTypeW's answer for a letter bound to
 /// a network share.
 #[cfg(windows)]
@@ -1464,7 +1461,7 @@ fn enum_com_registrations() -> (Vec<ComEntry>, Vec<String>) {
     use winreg::enums::{KEY_READ, KEY_WOW64_32KEY, KEY_WOW64_64KEY};
     use winreg::RegKey;
 
-    let entries: Vec<ComEntry> = Vec::new();
+    let mut entries: Vec<ComEntry> = Vec::new();
     let mut partial: Vec<String> = Vec::new();
     let views = [("native", KEY_WOW64_64KEY), ("wow6432", KEY_WOW64_32KEY)];
     for (view_name, view_flag) in views {
@@ -1479,20 +1476,18 @@ fn enum_com_registrations() -> (Vec<ComEntry>, Vec<String>) {
                 continue;
             }
         };
+        // ERROR_NO_MORE_ITEMS ends this iterator; any other error is an
+        // ABORTED walk, not an exhausted one, and is recorded so a truncated
+        // enumeration cannot pass as complete.
         let mut index = 0u32;
-        loop {
-            let clsid = match base.enum_key(index) {
+        for entry in base.enum_keys() {
+            let clsid = match entry {
                 Ok(k) => k,
                 Err(e) => {
-                    let raw = e.raw_os_error().unwrap_or(0);
-                    if raw != ERROR_NO_MORE_ITEMS && raw != 0 {
-                        // ACCESS_DENIED / KEY_DELETED / transient: the list was
-                        // ABORTED, not exhausted.
-                        partial.push(format!(
-                            "{} view enumeration stopped after {} keys ({})",
-                            view_name, index, e
-                        ));
-                    }
+                    partial.push(format!(
+                        "{} view enumeration stopped after {} keys ({})",
+                        view_name, index, e
+                    ));
                     break;
                 }
             };
