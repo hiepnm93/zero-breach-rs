@@ -357,7 +357,11 @@ mod tests {
     #[test]
     fn traversal_is_refused() {
         assert_eq!(
-            path_problem(Path::new("/tmp/../etc/passwd")),
+            path_problem(Path::new(if cfg!(windows) {
+                r"C:\tmp\..\etc\passwd"
+            } else {
+                "/tmp/../etc/passwd"
+            })),
             Some("parent-directory traversal cannot be classified as local".to_string())
         );
     }
@@ -423,6 +427,8 @@ mod tests {
         std::fs::write(dir.join("SkipMe").join("c.txt"), b"3").unwrap();
         #[cfg(unix)]
         std::os::unix::fs::symlink(dir.join("a.txt"), dir.join("l.txt")).unwrap();
+        #[cfg(windows)]
+        std::os::windows::fs::symlink_file(dir.join("a.txt"), dir.join("l.txt")).unwrap();
 
         let mut files: Vec<PathBuf> = Vec::new();
         let mut problems = 0;
