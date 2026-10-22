@@ -1,0 +1,28 @@
+[package]
+name = "zero-breach-rs"
+version = "0.1.8"
+edition = "2021"
+description = "Local, read-only check for AdFection / Candiru indicators (unofficial Rust port of interplains/zero-breach)"
+license = "Apache-2.0"
+repository = "https://github.com/hiepnm93/zero-breach-rs"
+publish = false
+
+[[bin]]
+name = "zero-breach"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4", default-features = false, features = ["std", "help", "usage", "error-context", "derive"] }
+rusqlite = { version = "0.32", features = ["bundled"] }
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", features = ["preserve_order"] }
+tempfile = "3"
+ureq = { version = "2", default-features = false, features = ["tls"] }
+
+[target.'cfg(windows)'.dependencies]
+winreg = "0.55"
+windows-sys = { version = "0.59", features = ["Win32_Storage_FileSystem"] }
+
+[profile.release]
+strip = true

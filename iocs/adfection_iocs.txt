@@ -1,0 +1,591 @@
+# AdFection / Discover-Tech / Candiru - indicators of compromise
+#
+# as-of: 2026-10-18
+# ^ The date this indicator set was last curated. It is the tool's staleness
+#   reference AND it makes the single-file build reproducible: the build embeds
+#   THIS date, not the file's modification time, so anyone can rebuild the
+#   standalone from a fresh checkout and get a byte-identical file. Update this
+#   line (and only deliberately) whenever the indicators below change.
+#
+# Source: The Citizen Lab, "Exposing AdFection: How Discover-Tech Turned Targeted Ads
+# Into a Pipeline for Zero-Click Mercenary Spyware", published 2026-10-15.
+# https://citizenlab.ca/research/how-discover-tech-turned-targeted-ads-into-a-pipeline-for-spyware/
+# Companion: Confiant, "ADINT: Weaponized Ad Tech for Zero-Click Spyware and Mass
+# Identity Vacuuming" (same date).
+#
+# Extended 2026-10-18 from the report's own Appendix C ("Domains linked to Discover-Tech
+# and Controlium") and its body text. Every line below was read out of the report itself
+# and cross-checked by two independent reads of the page before being added.
+#
+# Format: indicator <TAB> tier <TAB> confidence <TAB> source-tag
+#   tier       = cc | validator | delivery | historical | sample | vuln-driver
+#                | candiru | candiru-ip
+#                (`sample` = the spyware itself; `vuln-driver` = legitimate signed
+#                 software this actor abuses - a match is a lead, never proof)
+#   confidence = primary   (read from the cited current-campaign primary report)
+#                secondary (from a third-party summary of that report, OR from a
+#                           primary report of a separate/older campaign - verify
+#                           currency before acting; the source column says which)
+#
+# The indicator TYPE is inferred from its shape: 64 hex chars -> SHA-256,
+# dotted quad -> IP, otherwise -> domain. Scope is Candiru / DevilsTongue and
+# its AdFection delivery infrastructure; other spyware vendors are not imported.
+# Scanner evidence is distinct from live blocklist membership: the denylist
+# emitter excludes bare adtimizer.co while keeping named operational subhosts.
+#
+# Appendix C lists its entries as wildcards (`*.controlium[.]net`). Matching here is
+# case-insensitive boundary matching, so a registrable domain matches its subdomains
+# automatically. Named subdomains are kept anyway, because knowing WHICH endpoint was
+# contacted is worth more than a bare domain hit when someone has to triage it.
+#
+# IMPORTANT, from the report itself: an ad impression from this infrastructure in your
+# logs is NOT proof of infection. Not every ad carried a payload, and the validator
+# server decided per-device whether to continue. A hit here means "investigate", never
+# "you are compromised".
+#
+# ---------------------------------------------------------------------------------
+# DELIBERATELY NOT IMPORTED
+#
+# 1. The validator server set. The report states verbatim: "In all, we found 305
+#    distinct domain names on 319 IP addresses" - but it does NOT publish that list.
+#    Only the two below are named. So this file carries 2 of 305 validator domains and
+#    none of the 319 IPs, and that gap CANNOT be closed from the public report. It is
+#    the single largest known hole in this data set. Anyone with access to the full set
+#    (Citizen Lab, Sekoia and Recorded Future are named as having attributed some of
+#    them) could close it.
+# 2. Discover-Tech's own corporate websites (intelos.io, tekma.io, tekma-dmp.ai, and
+#    the shared Wix account linking them). These appear in the report as ATTRIBUTION
+#    evidence - they are how the companies were tied together - not as attack
+#    infrastructure. Matching them would flag anyone who merely read about the company,
+#    which is a false positive, not a finding.
+# 3. 10.0.0.52 (an internal address seen in login records, explicitly not infrastructure)
+#    and 62.90.129.xxx (redacted in the source, so unusable).
+# ---------------------------------------------------------------------------------
+#
+# Candiru command-and-control. These four matched the report's C&C "Fingerprint C1".
+fearevolve.com	cc	primary	citizenlab-adfection-2026
+jobmarcher.com	cc	primary	citizenlab-adfection-2026
+insightenterprisells.com	cc	primary	citizenlab-adfection-2026
+plasticbells.com	cc	primary	citizenlab-adfection-2026
+#
+# Two further Fingerprint C1 domains, registered within two hours of each other on
+# 2025-03-18.
+outdooutcome.com	cc	primary	citizenlab-adfection-2026
+suggestutterly.com	cc	primary	citizenlab-adfection-2026
+#
+# An IP that matched the same fingerprint, plus the two shared-hosting hostnames the
+# report says pointed at it. The hostnames are specific enough to match safely; the
+# IP is an Azure address, so note that cloud IPs get reassigned to innocent tenants
+# over time - treat an IP-only hit as weaker than a domain hit.
+52.174.65.77	cc	primary	citizenlab-adfection-2026
+archer.westeurope.cloudapp.azure.com	cc	primary	citizenlab-adfection-2026
+bd-mainserver.herokuapp.com	cc	primary	citizenlab-adfection-2026
+#
+# Candiru validator servers (device profiling / target selection).
+# Only these two are named in the report. See "DELIBERATELY NOT IMPORTED" above: the
+# other 303 domains and all 319 IPs are counted in the report but never listed.
+keyadapter.com	validator	primary	citizenlab-adfection-2026
+sharethere.net	validator	primary	citizenlab-adfection-2026
+#
+# Discover-Tech / Controlium infrastructure - Appendix C, "General".
+discover-tech.io	delivery	primary	citizenlab-adfection-2026
+mtrtb.com	delivery	primary	citizenlab-adfection-2026
+mydsp.io	delivery	primary	citizenlab-adfection-2026
+controlium.net	delivery	primary	citizenlab-adfection-2026
+powerium.net	delivery	primary	citizenlab-adfection-2026
+platc-tester.com	delivery	primary	citizenlab-adfection-2026
+myweb3id.io	delivery	primary	citizenlab-adfection-2026
+myipinfo.io	delivery	primary	citizenlab-adfection-2026
+akedo.gg	delivery	primary	citizenlab-adfection-2026
+volasim.com	delivery	primary	citizenlab-adfection-2026
+#
+# Appendix C, "NOAS Servers" - the ad-serving endpoints (the report lists these with a
+# /getAd or /cplatform/getAd path; the host is what is matchable in local artifacts).
+noas.mtrtb.com	delivery	primary	citizenlab-adfection-2026
+infinoas.mtrtb.com	delivery	primary	citizenlab-adfection-2026
+ppv2.mtrtb.com	delivery	primary	citizenlab-adfection-2026
+pqv2.mtrtb.com	delivery	primary	citizenlab-adfection-2026
+events.platc-tester.com	delivery	primary	citizenlab-adfection-2026
+events.myweb3id.io	delivery	primary	citizenlab-adfection-2026
+noas.powerium.net	delivery	primary	citizenlab-adfection-2026
+qa-noas.powerium.net	delivery	primary	citizenlab-adfection-2026
+noas.adtimizer.co	delivery	primary	citizenlab-adfection-2026
+noas.impchkdsp.com	delivery	primary	citizenlab-adfection-2026
+noas.trakking.co	delivery	primary	citizenlab-adfection-2026
+#
+# Appendix C, "Ad Tracking Domains".
+tracookiepixel.xyz	delivery	primary	citizenlab-adfection-2026
+cookiesurfer.com	delivery	primary	citizenlab-adfection-2026
+cookie-sync.xyz	delivery	primary	citizenlab-adfection-2026
+ads-monitor.xyz	delivery	primary	citizenlab-adfection-2026
+checkmyimp.com	delivery	primary	citizenlab-adfection-2026
+ads-impressions.com	delivery	primary	citizenlab-adfection-2026
+nutralove.co	delivery	primary	citizenlab-adfection-2026
+#
+# Further delivery infrastructure named in the report body.
+adtimizer.co	delivery	primary	citizenlab-adfection-2026
+dtech.adtimizer.co	delivery	primary	citizenlab-adfection-2026
+tracker.mtrtb.com	delivery	primary	citizenlab-adfection-2026
+sincereaccertain.com	delivery	primary	citizenlab-adfection-2026
+d1fcoizt7mje85.cloudfront.net	delivery	primary	citizenlab-adfection-2026
+discovertech-alb-100966113.us-east-1.elb.amazonaws.com	delivery	primary	citizenlab-adfection-2026
+#
+# Candiru infrastructure from the 2021 "Hooking Candiru" report - a SEPARATE, older
+# campaign. Included because a hit would still be significant, not because it is part
+# of AdFection.
+msstore.io	historical	primary	citizenlab-adfection-2026
+adtracker.link	historical	primary	citizenlab-adfection-2026
+cdnmobile.io	historical	primary	citizenlab-adfection-2026
+185.181.8.155	historical	primary	citizenlab-adfection-2026
+#
+# Known sample - the one Candiru Windows DLL published for this campaign.
+# SHA-256 of the DLL delivered through Discover-Tech ads (Citizen Lab, 2026-10-15).
+# This is ONE build. Another victim's DLL is compiled differently and will not match,
+# so a clean hash result is close to meaningless on its own - it is here because a
+# match would be conclusive, not because a miss is reassuring.
+255869de85e2a171993fc5eb8a556d873a1b8966e040f6f55926f2fa2d595cc8	sample	primary	citizenlab-adfection-2026
+#
+# ---------------------------------------------------------------------------------
+# SECOND SOURCE: Recorded Future, Insikt Group, "Tracking Candiru's DevilsTongue
+# Spyware in Multiple Countries" (CTA-2025-0805), published 2025-08-05.
+# https://www.recordedfuture.com/research/tracking-candirus-devilstongue-spyware
+# Imported 2026-10-18 from that report's Appendix A, transcribed by script rather
+# than by hand so a typo cannot invent a domain.
+#
+# WHY THIS IS HERE: the Citizen Lab report says its 305-domain validator set
+# "includes ones publicly attributed to Candiru by Sekoia, as well as Recorded
+# Future". This is that Recorded Future set. It does NOT recover the 305 (see
+# VALIDATOR-GAP.md), but it is the largest body of independently-attributed
+# Candiru infrastructure that is actually published.
+#
+# CROSS-VALIDATION, and the reason to trust this import: four domains in this
+# appendix - fearevolve.com, jobmarcher.com, outdooutcome.com, suggestutterly.com -
+# were ALREADY in this file from the Citizen Lab report, where they are named as
+# command-and-control servers. And the DevilsTongue SHA-256 in this appendix is
+# byte-identical to the AdFection sample hash below. Two vendors, 14 months apart,
+# describing the same infrastructure and the same binary.
+#
+# TIER CHOICE: Recorded Future describes eight clusters mixing victim-facing C2
+# with higher-tier operator infrastructure, and does not say which domain is
+# which. Filing them as `cc` would claim precision the source does not give, so
+# they are `candiru` = "Candiru-attributed, role unspecified". A hit is serious.
+#
+# THE IPs ARE WEAKER THAN THE DOMAINS, deliberately tiered apart as `candiru-ip`.
+# Nearly all are Vultr / DigitalOcean addresses from a report dated 2025-08. Cloud
+# IPs get reassigned to unrelated, innocent tenants within months. An undated hit
+# on one of these is far more likely to be a coincidence than a finding; it is
+# only meaningful if the hit carries a DATE inside the period (a DNS log entry,
+# say). Do not treat an IP hit as evidence on its own.
+# ---------------------------------------------------------------------------------
+ambiguouscommerce.com	candiru	primary	recordedfuture-2025-08
+antperspective.com	candiru	primary	recordedfuture-2025-08
+aperturebelt.com	candiru	primary	recordedfuture-2025-08
+asknapkin.com	candiru	primary	recordedfuture-2025-08
+barnsecret.com	candiru	primary	recordedfuture-2025-08
+baseagriculture.com	candiru	primary	recordedfuture-2025-08
+basicstraw.com	candiru	primary	recordedfuture-2025-08
+basinapposite.com	candiru	primary	recordedfuture-2025-08
+beneathbreadth.com	candiru	primary	recordedfuture-2025-08
+bizarreclassify.com	candiru	primary	recordedfuture-2025-08
+blockroster.net	candiru	primary	recordedfuture-2025-08
+bondmuscle.com	candiru	primary	recordedfuture-2025-08
+breadgroomer.com	candiru	primary	recordedfuture-2025-08
+bronzemonth.com	candiru	primary	recordedfuture-2025-08
+browniebell.com	candiru	primary	recordedfuture-2025-08
+bypassbirch.com	candiru	primary	recordedfuture-2025-08
+bypasscalculate.com	candiru	primary	recordedfuture-2025-08
+bypasscommerce.com	candiru	primary	recordedfuture-2025-08
+calmbase.org	candiru	primary	recordedfuture-2025-08
+cartoondrop.net	candiru	primary	recordedfuture-2025-08
+chickenstrawberry.com	candiru	primary	recordedfuture-2025-08
+citecivilization.com	candiru	primary	recordedfuture-2025-08
+closetmeat.com	candiru	primary	recordedfuture-2025-08
+commonclever.com	candiru	primary	recordedfuture-2025-08
+concretebottle.com	candiru	primary	recordedfuture-2025-08
+conquerconfess.com	candiru	primary	recordedfuture-2025-08
+containsnow.com	candiru	primary	recordedfuture-2025-08
+contradictionblindness.com	candiru	primary	recordedfuture-2025-08
+convincechaotic.com	candiru	primary	recordedfuture-2025-08
+cooperatedisinfect.net	candiru	primary	recordedfuture-2025-08
+cottonbread.com	candiru	primary	recordedfuture-2025-08
+cranberrybear.com	candiru	primary	recordedfuture-2025-08
+cropcritique.com	candiru	primary	recordedfuture-2025-08
+crossoverdue.com	candiru	primary	recordedfuture-2025-08
+damageconsider.com	candiru	primary	recordedfuture-2025-08
+deardrill.com	candiru	primary	recordedfuture-2025-08
+dediccatedconsideration.com	candiru	primary	recordedfuture-2025-08
+deducedefend.com	candiru	primary	recordedfuture-2025-08
+deliverconcern.net	candiru	primary	recordedfuture-2025-08
+densefoot.com	candiru	primary	recordedfuture-2025-08
+desireeclipse.com	candiru	primary	recordedfuture-2025-08
+detaincharity.net	candiru	primary	recordedfuture-2025-08
+deterdiffusion.com	candiru	primary	recordedfuture-2025-08
+devotionbelief.com	candiru	primary	recordedfuture-2025-08
+distractionfar.com	candiru	primary	recordedfuture-2025-08
+drivesplash.com	candiru	primary	recordedfuture-2025-08
+drummerjourney.com	candiru	primary	recordedfuture-2025-08
+dumplingbell.com	candiru	primary	recordedfuture-2025-08
+electric-prime.com	candiru	primary	recordedfuture-2025-08
+elifluousscintillam.com	candiru	primary	recordedfuture-2025-08
+eminententwine.com	candiru	primary	recordedfuture-2025-08
+exhibitexpanse.com	candiru	primary	recordedfuture-2025-08
+fallaciousessential.net	candiru	primary	recordedfuture-2025-08
+fileswaper.com	candiru	primary	recordedfuture-2025-08
+finalsalami.com	candiru	primary	recordedfuture-2025-08
+flexibleelevator.com	candiru	primary	recordedfuture-2025-08
+foamdirection.com	candiru	primary	recordedfuture-2025-08
+forecastgarden.com	candiru	primary	recordedfuture-2025-08
+goatsandals.com	candiru	primary	recordedfuture-2025-08
+golfconcert.com	candiru	primary	recordedfuture-2025-08
+groundbreakinginitative.com	candiru	primary	recordedfuture-2025-08
+guitarcalculate.com	candiru	primary	recordedfuture-2025-08
+hostilefauna.com	candiru	primary	recordedfuture-2025-08
+isolatelecture.com	candiru	primary	recordedfuture-2025-08
+jellybat.net	candiru	primary	recordedfuture-2025-08
+journeyjest.net	candiru	primary	recordedfuture-2025-08
+kartingrumble.com	candiru	primary	recordedfuture-2025-08
+labyrinthextravagance.org	candiru	primary	recordedfuture-2025-08
+leafconfuse.net	candiru	primary	recordedfuture-2025-08
+lessonhandle.com	candiru	primary	recordedfuture-2025-08
+macrodrop.net	candiru	primary	recordedfuture-2025-08
+macromint.net	candiru	primary	recordedfuture-2025-08
+maturitygenesis.com	candiru	primary	recordedfuture-2025-08
+measurecabin.com	candiru	primary	recordedfuture-2025-08
+mushroompalm.com	candiru	primary	recordedfuture-2025-08
+notableexam.org	candiru	primary	recordedfuture-2025-08
+notionnowadays.com	candiru	primary	recordedfuture-2025-08
+parkourbus.com	candiru	primary	recordedfuture-2025-08
+patternperiod.com	candiru	primary	recordedfuture-2025-08
+penslice.com	candiru	primary	recordedfuture-2025-08
+pepperdominate.com	candiru	primary	recordedfuture-2025-08
+prawnbasket.com	candiru	primary	recordedfuture-2025-08
+predictproper.com	candiru	primary	recordedfuture-2025-08
+pressaviation.com	candiru	primary	recordedfuture-2025-08
+profligatecensure.com	candiru	primary	recordedfuture-2025-08
+rollstrech.com	candiru	primary	recordedfuture-2025-08
+romancedrum.com	candiru	primary	recordedfuture-2025-08
+sacrificeprincipal.net	candiru	primary	recordedfuture-2025-08
+salmonpride.net	candiru	primary	recordedfuture-2025-08
+scoreparade.com	candiru	primary	recordedfuture-2025-08
+selectedpazzle.com	candiru	primary	recordedfuture-2025-08
+shareitwork.com	candiru	primary	recordedfuture-2025-08
+signifyslight.com	candiru	primary	recordedfuture-2025-08
+spongefruit.com	candiru	primary	recordedfuture-2025-08
+stablesurface.com	candiru	primary	recordedfuture-2025-08
+strangegarden.org	candiru	primary	recordedfuture-2025-08
+stylebrakedown.com	candiru	primary	recordedfuture-2025-08
+sunsetpotential.com	candiru	primary	recordedfuture-2025-08
+tacticscheap.net	candiru	primary	recordedfuture-2025-08
+tidalscreen.com	candiru	primary	recordedfuture-2025-08
+tubeshape.com	candiru	primary	recordedfuture-2025-08
+ultimatematter.info	candiru	primary	recordedfuture-2025-08
+velvetpremier.com	candiru	primary	recordedfuture-2025-08
+windomination.com	candiru	primary	recordedfuture-2025-08
+5.181.159.109	candiru-ip	primary	recordedfuture-2025-08
+5.252.178.158	candiru-ip	primary	recordedfuture-2025-08
+23.29.115.188	candiru-ip	primary	recordedfuture-2025-08
+23.227.198.196	candiru-ip	primary	recordedfuture-2025-08
+38.132.101.35	candiru-ip	primary	recordedfuture-2025-08
+45.32.109.170	candiru-ip	primary	recordedfuture-2025-08
+45.32.150.100	candiru-ip	primary	recordedfuture-2025-08
+45.76.31.6	candiru-ip	primary	recordedfuture-2025-08
+45.76.252.109	candiru-ip	primary	recordedfuture-2025-08
+45.77.57.173	candiru-ip	primary	recordedfuture-2025-08
+45.77.105.76	candiru-ip	primary	recordedfuture-2025-08
+64.225.3.138	candiru-ip	primary	recordedfuture-2025-08
+64.226.103.163	candiru-ip	primary	recordedfuture-2025-08
+65.20.96.9	candiru-ip	primary	recordedfuture-2025-08
+65.20.105.177	candiru-ip	primary	recordedfuture-2025-08
+65.20.106.49	candiru-ip	primary	recordedfuture-2025-08
+66.42.73.169	candiru-ip	primary	recordedfuture-2025-08
+66.42.126.125	candiru-ip	primary	recordedfuture-2025-08
+68.183.169.21	candiru-ip	primary	recordedfuture-2025-08
+68.183.186.185	candiru-ip	primary	recordedfuture-2025-08
+70.34.194.5	candiru-ip	primary	recordedfuture-2025-08
+70.34.251.208	candiru-ip	primary	recordedfuture-2025-08
+84.247.51.183	candiru-ip	primary	recordedfuture-2025-08
+88.119.175.56	candiru-ip	primary	recordedfuture-2025-08
+88.119.175.75	candiru-ip	primary	recordedfuture-2025-08
+91.207.173.115	candiru-ip	primary	recordedfuture-2025-08
+95.179.215.54	candiru-ip	primary	recordedfuture-2025-08
+104.207.153.0	candiru-ip	primary	recordedfuture-2025-08
+107.170.37.216	candiru-ip	primary	recordedfuture-2025-08
+107.170.42.32	candiru-ip	primary	recordedfuture-2025-08
+107.170.42.56	candiru-ip	primary	recordedfuture-2025-08
+134.209.3.89	candiru-ip	primary	recordedfuture-2025-08
+134.209.220.157	candiru-ip	primary	recordedfuture-2025-08
+136.244.69.219	candiru-ip	primary	recordedfuture-2025-08
+137.184.254.107	candiru-ip	primary	recordedfuture-2025-08
+138.197.43.97	candiru-ip	primary	recordedfuture-2025-08
+139.59.14.26	candiru-ip	primary	recordedfuture-2025-08
+139.84.208.188	candiru-ip	primary	recordedfuture-2025-08
+140.82.5.20	candiru-ip	primary	recordedfuture-2025-08
+143.198.64.22	candiru-ip	primary	recordedfuture-2025-08
+146.70.20.203	candiru-ip	primary	recordedfuture-2025-08
+146.70.29.228	candiru-ip	primary	recordedfuture-2025-08
+146.70.53.156	candiru-ip	primary	recordedfuture-2025-08
+146.70.81.218	candiru-ip	primary	recordedfuture-2025-08
+146.70.86.251	candiru-ip	primary	recordedfuture-2025-08
+146.70.102.108	candiru-ip	primary	recordedfuture-2025-08
+146.70.102.110	candiru-ip	primary	recordedfuture-2025-08
+146.70.102.121	candiru-ip	primary	recordedfuture-2025-08
+146.70.102.134	candiru-ip	primary	recordedfuture-2025-08
+146.70.116.7	candiru-ip	primary	recordedfuture-2025-08
+146.70.131.224	candiru-ip	primary	recordedfuture-2025-08
+146.70.147.9	candiru-ip	primary	recordedfuture-2025-08
+146.70.160.49	candiru-ip	primary	recordedfuture-2025-08
+146.70.169.165	candiru-ip	primary	recordedfuture-2025-08
+147.182.161.167	candiru-ip	primary	recordedfuture-2025-08
+149.28.57.173	candiru-ip	primary	recordedfuture-2025-08
+149.28.71.25	candiru-ip	primary	recordedfuture-2025-08
+149.28.77.207	candiru-ip	primary	recordedfuture-2025-08
+149.28.142.211	candiru-ip	primary	recordedfuture-2025-08
+149.28.242.133	candiru-ip	primary	recordedfuture-2025-08
+149.28.250.35	candiru-ip	primary	recordedfuture-2025-08
+149.28.253.112	candiru-ip	primary	recordedfuture-2025-08
+149.248.1.147	candiru-ip	primary	recordedfuture-2025-08
+152.42.226.197	candiru-ip	primary	recordedfuture-2025-08
+155.138.163.117	candiru-ip	primary	recordedfuture-2025-08
+155.138.202.66	candiru-ip	primary	recordedfuture-2025-08
+155.138.240.74	candiru-ip	primary	recordedfuture-2025-08
+157.230.128.10	candiru-ip	primary	recordedfuture-2025-08
+157.245.176.133	candiru-ip	primary	recordedfuture-2025-08
+158.247.194.199	candiru-ip	primary	recordedfuture-2025-08
+159.89.14.225	candiru-ip	primary	recordedfuture-2025-08
+159.223.151.126	candiru-ip	primary	recordedfuture-2025-08
+159.223.208.191	candiru-ip	primary	recordedfuture-2025-08
+161.35.150.79	candiru-ip	primary	recordedfuture-2025-08
+164.92.225.66	candiru-ip	primary	recordedfuture-2025-08
+164.92.235.125	candiru-ip	primary	recordedfuture-2025-08
+165.22.5.231	candiru-ip	primary	recordedfuture-2025-08
+165.22.51.81	candiru-ip	primary	recordedfuture-2025-08
+165.22.71.71	candiru-ip	primary	recordedfuture-2025-08
+165.227.145.109	candiru-ip	primary	recordedfuture-2025-08
+167.99.3.150	candiru-ip	primary	recordedfuture-2025-08
+167.99.85.48	candiru-ip	primary	recordedfuture-2025-08
+174.138.34.46	candiru-ip	primary	recordedfuture-2025-08
+178.128.49.106	candiru-ip	primary	recordedfuture-2025-08
+185.234.52.230	candiru-ip	primary	recordedfuture-2025-08
+188.208.141.190	candiru-ip	primary	recordedfuture-2025-08
+194.37.97.159	candiru-ip	primary	recordedfuture-2025-08
+194.180.158.45	candiru-ip	primary	recordedfuture-2025-08
+194.180.158.71	candiru-ip	primary	recordedfuture-2025-08
+194.180.191.84	candiru-ip	primary	recordedfuture-2025-08
+198.211.98.248	candiru-ip	primary	recordedfuture-2025-08
+199.247.10.38	candiru-ip	primary	recordedfuture-2025-08
+206.81.14.237	candiru-ip	primary	recordedfuture-2025-08
+207.246.87.188	candiru-ip	primary	recordedfuture-2025-08
+207.246.90.6	candiru-ip	primary	recordedfuture-2025-08
+207.246.105.206	candiru-ip	primary	recordedfuture-2025-08
+207.246.113.7	candiru-ip	primary	recordedfuture-2025-08
+208.76.221.167	candiru-ip	primary	recordedfuture-2025-08
+208.76.223.59	candiru-ip	primary	recordedfuture-2025-08
+208.85.18.104	candiru-ip	primary	recordedfuture-2025-08
+213.252.232.129	candiru-ip	primary	recordedfuture-2025-08
+213.252.232.141	candiru-ip	primary	recordedfuture-2025-08
+216.128.178.12	candiru-ip	primary	recordedfuture-2025-08
+216.238.77.17	candiru-ip	primary	recordedfuture-2025-08
+216.238.80.164	candiru-ip	primary	recordedfuture-2025-08
+216.238.86.164	candiru-ip	primary	recordedfuture-2025-08
+216.238.91.249	candiru-ip	primary	recordedfuture-2025-08
+217.69.6.58	candiru-ip	primary	recordedfuture-2025-08
+217.69.10.11	candiru-ip	primary	recordedfuture-2025-08
+
+# --- Historical Candiru infrastructure (separate, older campaigns) --------
+# Added 2026-10-18 from PRIMARY reports (not news coverage). Attacker-
+# controlled infrastructure only; compromised victim sites, real-org look-
+# alikes, decayed IPs and SHA-1 hashes were deliberately excluded. A hit is
+# tier=historical: significant if dated, but these domains are old and some
+# may since have lapsed and been re-registered, so confidence is secondary.
+#   eset-swc-2021            ESET, 'Strategic web compromises ... Candiru' (2021-11-16)
+#   avast-2022               Avast/Gen, 'The Return of Candiru' (CVE-2022-2294, 2022)
+#   citizenlab-candiru-2021  The Citizen Lab, 'Hooking Candiru' (2021-07)
+piwiks.com	historical	secondary	eset-swc-2021
+static-doubleclick.net	historical	secondary	eset-swc-2021
+fonts-gstatic.net	historical	secondary	eset-swc-2021
+bootstrapcdn.net	historical	secondary	eset-swc-2021
+hotjar.net	historical	secondary	eset-swc-2021
+moatads.co	historical	secondary	eset-swc-2021
+doubleclick.ac	historical	secondary	eset-swc-2021
+code-afsanalytics.com	historical	secondary	eset-swc-2021
+site-improve.net	historical	secondary	eset-swc-2021
+sitei-mprove.net	historical	secondary	eset-swc-2021
+addthis.events	historical	secondary	eset-swc-2021
+sherathis.com	historical	secondary	eset-swc-2021
+webfx.bz	historical	secondary	eset-swc-2021
+webffx.bz	historical	secondary	eset-swc-2021
+webfex.bz	historical	secondary	eset-swc-2021
+visitortrack.net	historical	secondary	eset-swc-2021
+livesession.bid	historical	secondary	eset-swc-2021
+livesesion.bid	historical	secondary	eset-swc-2021
+engagebay.app	historical	secondary	eset-swc-2021
+engagebaay.app	historical	secondary	eset-swc-2021
+clickcease.app	historical	secondary	eset-swc-2021
+useproof.cc	historical	secondary	eset-swc-2021
+yektenet.com	historical	secondary	eset-swc-2021
+rebrandly.site	historical	secondary	eset-swc-2021
+medica-tradefair.co	historical	secondary	eset-swc-2021
+bitly.bz	historical	secondary	eset-swc-2021
+bitly.tw	historical	secondary	eset-swc-2021
+bitly.zone	historical	secondary	eset-swc-2021
+bitly.tel	historical	secondary	eset-swc-2021
+bit-ly.site	historical	secondary	eset-swc-2021
+tinyurl.ist	historical	secondary	eset-swc-2021
+tinyurl.bz	historical	secondary	eset-swc-2021
+tinyurl.one	historical	secondary	eset-swc-2021
+tinyurl.photos	historical	secondary	eset-swc-2021
+tinyurl.plus	historical	secondary	eset-swc-2021
+shortlinkcut.link	historical	secondary	eset-swc-2021
+cuturl.app	historical	secondary	eset-swc-2021
+cuturl.space	historical	secondary	eset-swc-2021
+url-tiny.co	historical	secondary	eset-swc-2021
+llink.link	historical	secondary	eset-swc-2021
+instagrarn.co	historical	secondary	eset-swc-2021
+stylishblock.com	historical	secondary	avast-2022
+cnn24-7.online	historical	secondary	citizenlab-candiru-2021
+dw-arabic.com	historical	secondary	citizenlab-candiru-2021
+euro-news.online	historical	secondary	citizenlab-candiru-2021
+rasef22.com	historical	secondary	citizenlab-candiru-2021
+france-24.news	historical	secondary	citizenlab-candiru-2021
+amnestyreports.com	historical	secondary	citizenlab-candiru-2021
+blacklivesmatters.info	historical	secondary	citizenlab-candiru-2021
+womanstudies.co	historical	secondary	citizenlab-candiru-2021
+cortanaupdates.com	historical	secondary	citizenlab-candiru-2021
+googlplay.store	historical	secondary	citizenlab-candiru-2021
+apple-updates.online	historical	secondary	citizenlab-candiru-2021
+amazon-cz.eu	historical	secondary	citizenlab-candiru-2021
+drpbx-update.net	historical	secondary	citizenlab-candiru-2021
+lenovo-setup.tk	historical	secondary	citizenlab-candiru-2021
+konferenciya-zoom.com	historical	secondary	citizenlab-candiru-2021
+zcombinator.co	historical	secondary	citizenlab-candiru-2021
+linkedin-jobs.com	historical	secondary	citizenlab-candiru-2021
+faceb00k-live.com	historical	secondary	citizenlab-candiru-2021
+minstagram.net	historical	secondary	citizenlab-candiru-2021
+twitt-live.com	historical	secondary	citizenlab-candiru-2021
+youtubee.life	historical	secondary	citizenlab-candiru-2021
+wikipediaathome.net	historical	secondary	citizenlab-candiru-2021
+osesgy-unmissions.org	historical	secondary	citizenlab-candiru-2021
+whoint.co	historical	secondary	citizenlab-candiru-2021
+vesteldefnce.io	historical	secondary	citizenlab-candiru-2021
+pochtarossiy.info	historical	secondary	citizenlab-candiru-2021
+kupony-rohlik.cz	historical	secondary	citizenlab-candiru-2021
+yeni-safak.com	historical	secondary	citizenlab-candiru-2021
+cyprusnet.tk	historical	secondary	citizenlab-candiru-2021
+lwaeh-iteham-alasra.com	historical	secondary	citizenlab-candiru-2021
+mbsmetoo.com	historical	secondary	citizenlab-candiru-2021
+indoprogress.co	historical	secondary	citizenlab-candiru-2021
+#
+# BRING-YOUR-OWN-VULNERABLE-DRIVER. This is HW.sys / HW64.sys, a LEGITIMATE kernel
+# driver signed by Marvin Test Solutions, Inc. (port/memory/PCI access). Candiru
+# loads it to disable protections (Avast, 'The Return of Candiru', CVE-2022-2294);
+# it is catalogued as an abusable driver by LOLDrivers.
+#
+# IT IS NOT SPYWARE AND IT IS NOT THIS CAMPAIGN'S PAYLOAD. The same file is present
+# on clean machines that legitimately use Marvin Test hardware software. It is tiered
+# `vuln-driver`, NOT `sample`, so that a match is reported as something to look at
+# rather than as proof of infection. Reporting it as a spyware sample would hand a
+# false 'you are infected' to anyone running that hardware - the worst failure this
+# tool can have.
+6a4875ae86131a594019dec4abd46ac6ba47e57a88287b814d07d929858fe3e5	vuln-driver	secondary	avast-2022
+
+# Source: confiant-adint-2026; published 2026-10-15
+# https://blog.confiant.com/p/adint-weaponized-ad-tech-for-zero-click-spyware-and-mass-identity-vacuuming
+# Exact operational hosts only; the SDK endpoint is delivery-tier JavaScript
+# control, not proof of an implant callback. Tracking/ad contact is not infection.
+dtech.mtrtb.com	delivery	primary	confiant-adint-2026
+tekma.adtimizer.co	delivery	primary	confiant-adint-2026
+www.discover-tech.io	delivery	primary	confiant-adint-2026
+d8lmy5wyiokrq.cloudfront.net	delivery	primary	confiant-adint-2026
+d23625plpxg1yn.cloudfront.net	delivery	primary	confiant-adint-2026
+d39619tdxn6mhj.cloudfront.net	delivery	primary	confiant-adint-2026
+d2f4zpg1mgzwov.cloudfront.net	delivery	primary	confiant-adint-2026
+d1fzw0miu1r9rc.cloudfront.net	delivery	primary	confiant-adint-2026
+d19oo8r6k9oumb.cloudfront.net	delivery	primary	confiant-adint-2026
+d147nolwbekx2b.cloudfront.net	delivery	primary	confiant-adint-2026
+dcv2rnj2ograe.cloudfront.net	delivery	primary	confiant-adint-2026
+d1x4e580sn23dn.cloudfront.net	delivery	primary	confiant-adint-2026
+d2epnp0vokbtl7.cloudfront.net	delivery	primary	confiant-adint-2026
+pagead.trustlayersdk.com	delivery	primary	confiant-adint-2026
+
+# Source: microsoft-devilstongue-2021; published 2021-07-15
+# https://www.microsoft.com/en-us/security/blog/2021/07/15/protecting-customers-from-a-private-sector-offensive-actor-using-0-day-exploits-and-devilstongue-malware/
+# Older Candiru campaign evidence. Historical attribution does not establish
+# current ownership or activity; interpret dated artifacts in source context.
+noc-service-streamer.com	historical	secondary	microsoft-devilstongue-2021
+fbcdnads.live	historical	secondary	microsoft-devilstongue-2021
+hilocake.info	historical	secondary	microsoft-devilstongue-2021
+backxercise.com	historical	secondary	microsoft-devilstongue-2021
+winmslaf.xyz	historical	secondary	microsoft-devilstongue-2021
+service-deamon.com	historical	secondary	microsoft-devilstongue-2021
+online-affiliate-mon.com	historical	secondary	microsoft-devilstongue-2021
+codeingasmylife.com	historical	secondary	microsoft-devilstongue-2021
+kenoratravels.com	historical	secondary	microsoft-devilstongue-2021
+weathercheck.digital	historical	secondary	microsoft-devilstongue-2021
+colorpallatess.com	historical	secondary	microsoft-devilstongue-2021
+library-update.com	historical	secondary	microsoft-devilstongue-2021
+online-source-validate.com	historical	secondary	microsoft-devilstongue-2021
+grayhornet.com	historical	secondary	microsoft-devilstongue-2021
+johnshopkin.net	historical	secondary	microsoft-devilstongue-2021
+eulenformacion.com	historical	secondary	microsoft-devilstongue-2021
+
+# Source: avast-2022; published 2022-07-21
+# https://github.com/gendigitalinc/ioc/blob/95f8e5920fa5b518801904099e603ec86fde95ba/Candiru/README.md
+# Older Candiru campaign evidence. Historical attribution does not establish
+# current ownership or activity; interpret dated artifacts in source context.
+bad-shop.net	historical	secondary	avast-2022
+bestcarent.org	historical	secondary	avast-2022
+core-update.com	historical	secondary	avast-2022
+datanalytic.org	historical	secondary	avast-2022
+expertglobal.org	historical	secondary	avast-2022
+only-music.net	historical	secondary	avast-2022
+popsonglist.com	historical	secondary	avast-2022
+querylight.net	historical	secondary	avast-2022
+smartstand.org	historical	secondary	avast-2022
+webs-update.com	historical	secondary	avast-2022
+
+# Source: citizenlab-candiru-2021; published 2021-07-15
+# https://citizenlab.ca/research/hooking-candiru-another-mercenary-spyware-vendor-comes-into-focus/
+# Older Candiru campaign evidence. Historical attribution does not establish
+# current ownership or activity; interpret dated artifacts in source context.
+refugeeinternational.org	historical	secondary	citizenlab-candiru-2021
+genderconference.org	historical	secondary	citizenlab-candiru-2021
+un-asia.co	historical	secondary	citizenlab-candiru-2021
+armenpress.net	historical	secondary	citizenlab-candiru-2021
+tehrantimes.org	historical	secondary	citizenlab-candiru-2021
+total-slovenia-news.net	historical	secondary	citizenlab-candiru-2021
+
+# Source: citizenlab-catalangate-2022; published 2022-04-18
+# https://citizenlab.ca/research/catalangate-extensive-mercenary-spyware-operation-against-catalans-using-pegasus-candiru/
+# Older Candiru campaign evidence. Historical attribution does not establish
+# current ownership or activity; interpret dated artifacts in source context.
+stat.email	historical	secondary	citizenlab-catalangate-2022
+adtrack.link	historical	secondary	citizenlab-catalangate-2022
+cortana.cloud	historical	secondary	citizenlab-catalangate-2022
+rbtlnk.net	historical	secondary	citizenlab-catalangate-2022
+
+# Source: google-tag-candiru-2021; published 2021-07-14
+# https://blog.google/threat-analysis-group/how-we-protect-users-0-day-attacks/
+# Older Candiru campaign evidence. Historical attribution does not establish
+# current ownership or activity; interpret dated artifacts in source context.
+lragir.org	historical	secondary	google-tag-candiru-2021
+armradio.org	historical	secondary	google-tag-candiru-2021
+asbares.com	historical	secondary	google-tag-candiru-2021
+armtimes.net	historical	secondary	google-tag-candiru-2021
+armlur.org	historical	secondary	google-tag-candiru-2021
+armenpress.org	historical	secondary	google-tag-candiru-2021
+hraparak.org	historical	secondary	google-tag-candiru-2021
+armtimes.org	historical	secondary	google-tag-candiru-2021
+hetq.org	historical	secondary	google-tag-candiru-2021
+lioiamcount.com	historical	secondary	google-tag-candiru-2021
+db-control-uplink.com	historical	secondary	google-tag-candiru-2021
+kidone.xyz	historical	secondary	google-tag-candiru-2021
+workaj.com	historical	secondary	google-tag-candiru-2021
+wordzmncount.com	historical	secondary	google-tag-candiru-2021
+
+# Source: amnesty-candiru-indonesia-2024; published 2024-05-01
+# https://securitylab.amnesty.org/latest/2024/05/a-web-of-surveillance/
+# Older Candiru campaign evidence. Historical attribution does not establish
+# current ownership or activity; interpret dated artifacts in source context.
+aqaf.net	historical	secondary	amnesty-candiru-indonesia-2024
+gelora.org	historical	secondary	amnesty-candiru-indonesia-2024
+nusantaraqurban.com	historical	secondary	amnesty-candiru-indonesia-2024
