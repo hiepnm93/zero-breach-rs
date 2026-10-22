@@ -418,7 +418,7 @@ pub fn check_com(
     if ctx.patterns && ctx.pattern_paths.is_empty() {
         let mut unique: std::collections::BTreeMap<String, String> = Default::default();
         for e in &entries {
-            if !(e.exists && e.user_writable) || !e.remote_reason.is_empty() {
+            if !e.exists || !e.user_writable || !e.remote_reason.is_empty() {
                 continue;
             }
             if !Path::new(&e.path).is_file() {

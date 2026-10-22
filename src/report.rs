@@ -652,13 +652,11 @@ fn wrap(text: &str, width: usize) -> Vec<String> {
         if !cur.is_empty() && cur.chars().count() + 1 + word.chars().count() > width {
             lines.push(cur);
             cur = word.to_string();
+        } else if cur.is_empty() {
+            cur = word.to_string();
         } else {
-            if cur.is_empty() {
-                cur = word.to_string();
-            } else {
-                cur.push(' ');
-                cur.push_str(word);
-            }
+            cur.push(' ');
+            cur.push_str(word);
         }
     }
     if !cur.is_empty() {
