@@ -3,6 +3,9 @@
 //! (https://github.com/interplains/zero-breach, Apache-2.0): the module layout
 //! mirrors the Python package `scan/adint_scan` one-for-one.
 //!
+//! Ported from zero-breach (https://github.com/interplains/zero-breach,
+//! commit 1c7e9b6, Apache-2.0); see NOTICE.
+//!
 //! A clean result from this tool means "no known indicators were found in the
 //! places that can be checked." It does NOT mean the device is clean.
 

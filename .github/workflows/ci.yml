@@ -1,0 +1,100 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+    tags: ["v*"]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    name: test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - name: Run tests
+        run: cargo test --verbose
+      - name: Clippy
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Formatting
+        run: cargo fmt --check
+      # The Windows-only code paths (registry walk, PowerShell, drive typing)
+      # are cfg-gated; check they still compile for the Windows target from
+      # every runner.
+      - name: Cross-target check (windows-gnu)
+        if: runner.os != 'Windows'
+        run: |
+          rustup target add x86_64-pc-windows-gnu
+          cargo check --target x86_64-pc-windows-gnu
+
+  release:
+    name: release binaries
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            archive: zero-breach-linux-x86_64.tar.gz
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            archive: zero-breach-windows-x86_64.zip
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            archive: zero-breach-macos-aarch64.zip
+          - os: macos-latest
+            target: x86_64-apple-darwin
+            archive: zero-breach-macos-x86_64.zip
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+      - name: Build
+        run: cargo build --release --target ${{ matrix.target }}
+      - name: Stage
+        shell: bash
+        run: |
+          staging="zero-breach-${{ matrix.target }}"
+          mkdir -p "$staging"
+          cp README.md README_VI.md NOTICE LICENSE "$staging/"
+          cp -r iocs "$staging/iocs"
+          if [ -f "target/${{ matrix.target }}/release/zero-breach.exe" ]; then
+            cp "target/${{ matrix.target }}/release/zero-breach.exe" "$staging/"
+          else
+            cp "target/${{ matrix.target }}/release/zero-breach" "$staging/"
+          fi
+      - name: Archive (tar.gz)
+        if: matrix.archive ends with '.tar.gz'
+        shell: bash
+        run: tar czf "${{ matrix.archive }}" "zero-breach-${{ matrix.target }}"
+      - name: Archive (zip)
+        if: matrix.archive ends with '.zip'
+        shell: bash
+        run: 7z a "${{ matrix.archive }}" "zero-breach-${{ matrix.target }}"
+      - name: SHA-256
+        shell: bash
+        run: |
+          sha256sum "${{ matrix.archive }}" > "${{ matrix.archive }}.sha256"
+          cat "${{ matrix.archive }}.sha256"
+      - name: Upload to the release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ matrix.archive }}
+            ${{ matrix.archive }}.sha256

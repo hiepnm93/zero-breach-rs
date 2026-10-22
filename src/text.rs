@@ -1,6 +1,7 @@
 //! Small shared text helpers: hashing, base64 (for the HSTS fingerprint) and
-//! the `{:,}` thousands separator the Python reports used. These stand in for
-//! `hashlib`, `base64` and `str.format` from zero-breach (Apache-2.0).
+//! the `{:,}` thousands separator the Python reports used.
+//! Ported from zero-breach — stand-ins for `hashlib`, `base64` and `str.format` calls
+//! that were spread across scan/adint_scan (Apache-2.0).
 
 use sha2::{Digest, Sha256};
 

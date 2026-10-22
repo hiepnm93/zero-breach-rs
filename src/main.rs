@@ -1,6 +1,7 @@
 //! zero-breach-rs — local, read-only detector for AdFection / Candiru
-//! indicators. Unofficial Rust port of zero-breach
-//! (https://github.com/interplains/zero-breach, Apache-2.0).
+//! indicators. Ported from zero-breach
+//! (https://github.com/interplains/zero-breach, commit 1c7e9b6, Apache-2.0);
+//! an unofficial port, not affiliated with or endorsed by upstream.
 
 fn main() {
     let mut argv: Vec<String> = std::env::args().collect();

@@ -1,7 +1,8 @@
 //! Minimal civil-time helpers standing in for the parts of Python's `datetime`
 //! and `time` modules the ported scanner uses: unix-epoch conversions,
-//! ISO-8601 rendering and calendar-day arithmetic. It ports no single upstream
-//! file; every conversion here replaces a `datetime.*` call in zero-breach.
+//! ISO-8601 rendering and calendar-day arithmetic. Ported from zero-breach:
+//! no single upstream file, but every conversion here replaces a `datetime.*`
+//! call in scan/adint_scan (Apache-2.0).
 //!
 //! Everything is computed in UTC. The Python original rendered timestamps in
 //! the machine's local zone; a Rust build with no external time-library

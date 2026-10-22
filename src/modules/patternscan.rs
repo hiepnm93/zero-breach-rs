@@ -1,6 +1,6 @@
 //! Optional, bounded matching of pinned public Candiru research rules.
-//! Stub for the Rust port of zero-breach
-//! scan/adint_scan/modules/patternscan.py (Apache-2.0).
+//! Ported from zero-breach scan/adint_scan/modules/patternscan.py
+//! (Apache-2.0) as an honest stub.
 //!
 //! The Python module drives the pinned YARA-X engine over a carefully bounded
 //! walk (1 MiB per file, file/directory/entry/depth/byte caps, TOCTOU-checked

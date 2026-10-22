@@ -1,0 +1,82 @@
+adint-scan
+Copyright 2026 archivegenocide.com
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use
+this software except in compliance with the License. You may obtain a copy of
+the License in the file LICENSE in this directory, or at:
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software distributed
+under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, either express or implied.
+
+--------------------------------------------------------------------------------
+NOT AFFILIATED, NOT ENDORSED
+--------------------------------------------------------------------------------
+
+This project is independent. It is NOT affiliated with, endorsed by, reviewed by
+or connected to any of the organisations whose published research it draws on:
+
+    The Citizen Lab (University of Toronto)
+    Confiant
+    Recorded Future / Insikt Group
+    Amnesty International Security Lab
+    Access Now
+    Microsoft
+    ESET
+    Avast / Gen
+    Google Threat Analysis Group
+
+Their names appear here only to cite the source of an indicator or to point a
+user at help. Any error in this software, and any error in how a published
+indicator has been transcribed or classified here, is this project's alone.
+
+--------------------------------------------------------------------------------
+INDICATOR DATA IS LICENSED SEPARATELY
+--------------------------------------------------------------------------------
+
+The indicator set in iocs/ is NOT covered by the Apache License above. It is
+released into the public domain under CC0 1.0 so that it can be copied into
+blocklists, STIX bundles, MISP instances and other tools without friction.
+See iocs/LICENSE.md.
+
+The optional Candiru YARA rules are NOT part of that CC0 indicator grant.
+Microsoft Threat Intelligence Center's MAL_DevilsTongue_HijackDll rule is
+redistributed from Signature-Base under Detection Rule License 1.1.
+Felix Bilstein's win_devilstongue_auto rule is redistributed from Malpedia
+under CC BY-SA 4.0. Both rules are unchanged. Author, source and license
+attribution are retained in the embedded rules, match details, and
+third_party/candiru/. YARA-X itself is a separate optional BSD-3-Clause
+dependency, not embedded executable code in this script.
+
+Primary sources for the indicator set:
+
+  The Citizen Lab, "Exposing AdFection: How Discover-Tech Turned Targeted Ads
+  Into a Pipeline for Zero-Click Mercenary Spyware", 2026-10-15.
+
+  Recorded Future / Insikt Group, "Devil's Tongue" infrastructure reporting,
+  CTA-2025-0805, August 2025.
+
+  Additional Candiru research from The Citizen Lab (2021, 2022), Confiant
+  (2026), Microsoft (2021), ESET (2021), Avast / Gen (2022), Google Threat
+  Analysis Group (2021) and Amnesty International Security Lab (2024).
+  Full report titles, dates and links: iocs/LICENSE.md.
+
+--------------------------------------------------------------------------------
+WHAT THIS SOFTWARE DOES NOT PROMISE
+--------------------------------------------------------------------------------
+
+A result of "no known indicators found" is not a clean bill of health, and this
+software states so in its own output. It cannot detect an unknown indicator, it
+cannot see evidence that has already expired, and it is not a substitute for
+expert forensic help. Anyone with real reason for concern should contact the
+Access Now Digital Security Helpline (https://www.accessnow.org/help/) or the
+Amnesty International Security Lab (https://securitylab.amnesty.org/).
+
+--------------------------------------------------------------------------------
+RUST PORT
+--------------------------------------------------------------------------------
+
+Rust port by hiepnm93 (https://github.com/hiepnm93/zero-breach-rs), derived
+from zero-breach commit 1c7e9b6.
