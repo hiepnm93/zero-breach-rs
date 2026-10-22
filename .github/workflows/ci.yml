@@ -29,8 +29,8 @@ jobs:
       - name: Formatting
         run: cargo fmt --check
 
-  release:
-    name: release binaries
+  build:
+    name: build (${{ matrix.asset }})
     if: startsWith(github.ref, 'refs/tags/v')
     needs: test
     strategy:
@@ -39,54 +39,93 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-            archive: zero-breach-linux-x86_64.tar.gz
+            asset: zero-breach-linux-x86_64
           - os: windows-latest
             target: x86_64-pc-windows-msvc
-            archive: zero-breach-windows-x86_64.zip
+            asset: zero-breach-windows-x86_64.exe
           - os: macos-latest
             target: aarch64-apple-darwin
-            archive: zero-breach-macos-aarch64.zip
+            asset: zero-breach-macos-aarch64
           - os: macos-latest
             target: x86_64-apple-darwin
-            archive: zero-breach-macos-x86_64.zip
+            asset: zero-breach-macos-x86_64
     runs-on: ${{ matrix.os }}
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - name: Tag must match the crate version
+        shell: bash
+        run: |
+          v=$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+          test "v$v" = "$GITHUB_REF_NAME" || { echo "tag $GITHUB_REF_NAME != crate v$v"; exit 1; }
       - name: Build
         run: cargo build --release --target ${{ matrix.target }}
       - name: Stage
         shell: bash
         run: |
-          staging="zero-breach-${{ matrix.target }}"
-          mkdir -p "$staging"
-          cp README.md README_VI.md NOTICE LICENSE "$staging/"
-          cp -r iocs "$staging/iocs"
-          if [ -f "target/${{ matrix.target }}/release/zero-breach.exe" ]; then
-            cp "target/${{ matrix.target }}/release/zero-breach.exe" "$staging/"
-          else
-            cp "target/${{ matrix.target }}/release/zero-breach" "$staging/"
-          fi
-      - name: Archive (tar.gz)
-        if: endsWith(matrix.archive, '.tar.gz')
-        shell: bash
-        run: tar czf "${{ matrix.archive }}" "zero-breach-${{ matrix.target }}"
-      - name: Archive (zip)
-        if: endsWith(matrix.archive, '.zip')
-        shell: bash
-        run: 7z a "${{ matrix.archive }}" "zero-breach-${{ matrix.target }}"
-      - name: SHA-256
+          src="target/${{ matrix.target }}/release/zero-breach"
+          [ -f "$src.exe" ] && src="$src.exe"
+          cp "$src" "${{ matrix.asset }}"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.asset }}
+          path: ${{ matrix.asset }}
+
+  # One job assembles the whole release, laid out like the upstream Python
+  # release: the program, the indicator file, the CC0 blocklist exports and a
+  # SHA256SUMS.txt. The exports are not regenerated here (build/ was not
+  # ported); they are upstream's own release files, fetched for the pinned
+  # tag, checked against upstream's GPG-signed SHA256SUMS.txt, and required to
+  # come from the same indicator file this binary embeds.
+  publish:
+    name: publish release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      UPSTREAM_REPO: interplains/zero-breach
+      UPSTREAM_TAG: v0.1.8
+      # Full fingerprint published in upstream SIGNING.md.
+      UPSTREAM_KEY_FPR: C24EC92B12D6670A2516065F9B4D575499AFA53C
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Fetch and verify upstream exports
         shell: bash
         run: |
-          sha256sum "${{ matrix.archive }}" > "${{ matrix.archive }}.sha256"
-          cat "${{ matrix.archive }}.sha256"
+          set -euo pipefail
+          mkdir up && cd up
+          gh release download "$UPSTREAM_TAG" -R "$UPSTREAM_REPO" \
+            -p SHA256SUMS.txt -p SHA256SUMS.txt.asc -p archivegenocide-signing-key.asc \
+            -p 'adfection.*' -p adfection_iocs.txt
+          export GNUPGHOME=$(mktemp -d)
+          gpg --batch --import archivegenocide-signing-key.asc
+          gpg --batch --with-colons --fingerprint | grep "^fpr:::::::::$UPSTREAM_KEY_FPR:" >/dev/null \
+            || { echo "signing key fingerprint mismatch"; exit 1; }
+          gpg --batch --verify SHA256SUMS.txt.asc SHA256SUMS.txt
+          sha256sum --check --ignore-missing SHA256SUMS.txt
+          cmp adfection_iocs.txt ../iocs/adfection_iocs.txt \
+            || { echo "upstream exports were built from a different indicator file"; exit 1; }
+          cp adfection.* ../dist/
+      - name: Assemble
+        shell: bash
+        run: |
+          set -euo pipefail
+          cp iocs/adfection_iocs.txt iocs/adfection_iocs.txt.sha256 NOTICE LICENSE dist/
+          cp iocs/LICENSE.md dist/LICENSE-DATA-CC0.md
+          cd dist
+          chmod +x zero-breach-linux-x86_64 zero-breach-macos-*
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - name: Upload to the release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ${{ matrix.archive }}
-            ${{ matrix.archive }}.sha256
+          body_path: .github/release-notes.md
+          files: dist/*
