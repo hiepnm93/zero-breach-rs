@@ -30,11 +30,14 @@ use std::path::{Path, PathBuf};
 
 use crate::context::ScanContext;
 use crate::localpaths::path_problem;
-use crate::result::{
-    Hit, ModuleResult, EV_CONFIGURED, EV_DNS, EV_ON_DISK, EV_PERSISTENCE,
-};
+use crate::result::{Hit, ModuleResult, EV_CONFIGURED, EV_DNS, EV_ON_DISK, EV_PERSISTENCE};
 
 pub const NAME: &str = "host";
+
+const UNC_PREFIX: &str = "\\\\";
+const EXTENDED_PREFIX: &str = "\\\\?\\";
+const DEVICE_PREFIX: &str = "\\\\.\\";
+const UNC_AFTER_PREFIX: &str = "unc\\";
 
 /// Addresses that mean "this name was deliberately pointed nowhere". Shared by
 /// the hosts-file check and the resolver-cache check, because the two have to
@@ -193,10 +196,9 @@ pub fn user_writable_dirs() -> Vec<String> {
 /// had a chance to reject the path.
 pub fn server_path(raw: &str, kind: &str) -> String {
     let mut s = expand_vars(raw).trim().to_string();
-    if s.starts_with('"') {
-        if let Some(end) = s[1..].find('"') {
-            let end = end + 1;
-            return s[1..end].trim().to_string();
+    if let Some(stripped) = s.strip_prefix('"') {
+        if let Some(end) = stripped.find('"') {
+            return stripped[..end].trim().to_string();
         }
     }
     s = s.trim_matches('"').trim().to_string();
@@ -228,8 +230,7 @@ fn command_extension_end(s: &str) -> Option<usize> {
             {
                 // (?=\s|$): the extension must be followed by whitespace or
                 // end of string.
-                let after_ok = i + 4 == b.len()
-                    || b[i + 4].is_ascii_whitespace();
+                let after_ok = i + 4 == b.len() || b[i + 4].is_ascii_whitespace();
                 if after_ok {
                     return Some(i + 4);
                 }
@@ -262,9 +263,7 @@ pub fn expand_vars(s: &str) -> String {
                 }
             } else {
                 let mut j = i + 1;
-                while j < bytes.len()
-                    && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_')
-                {
+                while j < bytes.len() && (bytes[j].is_ascii_alphanumeric() || bytes[j] == b'_') {
                     j += 1;
                 }
                 if j > i + 1 {
@@ -305,22 +304,27 @@ pub fn remote_path_reason(path: &str, remote_letters: &[char], drives_known: boo
     if path.is_empty() {
         return String::new();
     }
-    let s = path.replace('/', "\\");
+    let s = path.replace("/", "\\");
     let low = s.to_lowercase();
-    let rest: &str;
-    if low.starts_with("\\\\?\\") || low.starts_with("\\\\.\\") {
-        // Extended-length prefix. "\\?\UNC\server\share" is the long spelling
-        // of "\\server\share", while "\\?\C:\..." wearing the same prefix is
-        // an ordinary local path — so the prefix alone settles nothing.
-        if low[4..].starts_with("unc\\") {
+    if low.starts_with(EXTENDED_PREFIX) || low.starts_with(DEVICE_PREFIX) {
+        // Extended-length prefix. The UNC long-form spelling and an ordinary
+        // local path wear the same prefix, so the prefix alone settles nothing:
+        // the part after it has to be read.
+        if low[4..].starts_with(UNC_AFTER_PREFIX) {
             return "it is a UNC path to a remote share (\\\\?\\UNC\\...)".to_string();
         }
-        rest = &s[4..];
-    } else if s.starts_with("\\\\") {
-        return "it is a UNC path to a remote share (\\\\server\\share)".to_string();
-    } else {
-        rest = &s[..];
+        let rest = &s[4..];
+        return drive_letter_problem(rest, remote_letters, drives_known);
     }
+    if s.starts_with(UNC_PREFIX) {
+        return "it is a UNC path to a remote share (\\\\server\\share)".to_string();
+    }
+    drive_letter_problem(&s, remote_letters, drives_known)
+}
+
+/// A drive letter bound to a remote share must not be touched either; the
+/// OS mount table knows, and asking it opens nothing.
+fn drive_letter_problem(rest: &str, remote_letters: &[char], drives_known: bool) -> String {
     let rb = rest.as_bytes();
     if rb.len() >= 2 && rb[0].is_ascii_alphabetic() && rb[1] == b':' {
         let letter = rb[0].to_ascii_uppercase() as char;
@@ -342,7 +346,9 @@ pub fn remote_path_reason(path: &str, remote_letters: &[char], drives_known: boo
 ///
 /// Signature inventory is optional context, never an indicator match. Until a
 /// strictly offline verifier is available, no verification subprocess is run.
-pub fn signature_status(paths: &[String]) -> (std::collections::HashMap<String, (String, String)>, String) {
+pub fn signature_status(
+    paths: &[String],
+) -> (std::collections::HashMap<String, (String, String)>, String) {
     let mut map = std::collections::HashMap::new();
     for p in paths {
         map.insert(p.to_lowercase(), ("NotChecked".to_string(), String::new()));
@@ -381,16 +387,13 @@ pub fn check_com(
         let low = if expanded.is_empty() {
             String::new()
         } else {
-            crate::localpaths::normcase(&crate::localpaths::normpath(Path::new(
-                &expanded,
-            )))
-            .to_string_lossy()
-            .to_lowercase()
+            crate::localpaths::normcase(&crate::localpaths::normpath(Path::new(&expanded)))
+                .to_string_lossy()
+                .to_lowercase()
         };
         // Decided before the path is touched: an existence test on a remote
         // path is itself the network contact this tool promises never to make.
-        e.remote_reason =
-            remote_path_reason(&expanded, remote_letters, drives_known);
+        e.remote_reason = remote_path_reason(&expanded, remote_letters, drives_known);
         if e.remote_reason.is_empty() && !expanded.is_empty() {
             e.remote_reason = path_problem(Path::new(&expanded)).unwrap_or_default();
         }
@@ -424,17 +427,18 @@ pub fn check_com(
             if !Path::new(&e.path).is_file() {
                 continue;
             }
-            let key = crate::localpaths::normcase(&crate::localpaths::normpath(Path::new(
-                &e.path,
-            )))
-            .to_string_lossy()
-            .into_owned();
+            let key = crate::localpaths::normcase(&crate::localpaths::normpath(Path::new(&e.path)))
+                .to_string_lossy()
+                .into_owned();
             unique.entry(key).or_insert_with(|| e.path.clone());
         }
         let candidates: Vec<String> = unique.into_values().collect();
         let omitted = candidates.len().saturating_sub(COM_PATTERN_CANDIDATE_CAP);
-        ctx.pattern_candidate_paths =
-            candidates.into_iter().take(COM_PATTERN_CANDIDATE_CAP).map(PathBuf::from).collect();
+        ctx.pattern_candidate_paths = candidates
+            .into_iter()
+            .take(COM_PATTERN_CANDIDATE_CAP)
+            .map(PathBuf::from)
+            .collect();
         ctx.pattern_candidate_omitted = omitted as i64;
     }
 
@@ -450,8 +454,7 @@ pub fn check_com(
             // a measurement is exactly the collapse D3 forbids.
             "not checked (path is not on a local disk)".to_string()
         } else if e.exists {
-            sigs
-                .get(&e.path.to_lowercase())
+            sigs.get(&e.path.to_lowercase())
                 .map(|(s, _)| s.clone())
                 .unwrap_or_else(|| "Unknown".to_string())
         } else {
@@ -498,15 +501,8 @@ pub fn check_com(
         // Reviewable inventory, deliberately narrowed: an entry is only worth
         // a human's attention if it is BOTH in a user-writable directory AND
         // not validly signed.
-        if e.user_writable && status != "Valid" && status != "Unknown" && status != "NotChecked"
-        {
-            reviewable.push((
-                location,
-                e.path.clone(),
-                e.exists,
-                status,
-                e.signer.clone(),
-            ));
+        if e.user_writable && status != "Valid" && status != "Unknown" && status != "NotChecked" {
+            reviewable.push((location, e.path.clone(), e.exists, status, e.signer.clone()));
         }
     }
 
@@ -652,19 +648,15 @@ pub fn check_dns_cache(
             "indicator {{ioc}} appears as a name or address in this boot's DNS \
              resolver cache (Entry={} Name={} Data={}) — this is a resolver record; \
              endpoint contact is unverified",
-            if row.entry.is_empty() { "-" } else { &row.entry },
+            if row.entry.is_empty() {
+                "-"
+            } else {
+                &row.entry
+            },
             if row.name.is_empty() { "-" } else { &row.name },
             if row.data.is_empty() { "-" } else { &row.data }
         );
-        hits += match_blob(
-            r,
-            ctx,
-            &haystack,
-            "DNS resolver cache",
-            &detail,
-            EV_DNS,
-            "",
-        );
+        hits += match_blob(r, ctx, &haystack, "DNS resolver cache", &detail, EV_DNS, "");
     }
 
     r.checked += rows.len() as i64;
@@ -747,7 +739,11 @@ pub fn check_dns_log(
             r.note(&format!(
                 "dns-log: {} could not be queried ({})",
                 DNS_CHANNEL,
-                if err.is_empty() { "log not present on this host".to_string() } else { err }
+                if err.is_empty() {
+                    "log not present on this host".to_string()
+                } else {
+                    err
+                }
             ));
             r.note(ARM_HINT);
             r.reach_set(
@@ -885,7 +881,11 @@ pub fn check_dns_log(
             &format!(
                 "{} @ {}",
                 DNS_CHANNEL,
-                if when.is_empty() { "unknown time".to_string() } else { when.clone() }
+                if when.is_empty() {
+                    "unknown time".to_string()
+                } else {
+                    when.clone()
+                }
             ),
             &detail,
             EV_DNS,
@@ -935,7 +935,10 @@ pub fn check_hosts(r: &mut ModuleResult, ctx: &mut ScanContext, root: &str) {
         return;
     }
     if !path.exists() {
-        r.could_not_run("hosts-file", &format!("no hosts file at {}", path.display()));
+        r.could_not_run(
+            "hosts-file",
+            &format!("no hosts file at {}", path.display()),
+        );
         return;
     }
     let raw = match std::fs::read_to_string(&path) {
@@ -1012,8 +1015,12 @@ pub fn check_hosts(r: &mut ModuleResult, ctx: &mut ScanContext, root: &str) {
 /// legitimate, so the check fingerprints it and raises a serious hit ONLY when
 /// the fingerprint matches a known-bad hash.
 pub fn check_known_paths(r: &mut ModuleResult, ctx: &mut ScanContext, root: &str) {
-    let known_hashes: std::collections::HashSet<String> =
-        ctx.iocs.hashes().into_iter().map(|h| h.value.clone()).collect();
+    let known_hashes: std::collections::HashSet<String> = ctx
+        .iocs
+        .hashes()
+        .into_iter()
+        .map(|h| h.value.clone())
+        .collect();
     let mut found = 0i64;
     let mut unavailable = 0i64;
     for (parts, why) in KNOWN_DROPS {
@@ -1107,12 +1114,19 @@ pub fn check_known_paths(r: &mut ModuleResult, ctx: &mut ScanContext, root: &str
                     format!("SHA-256 {}...", &digest[..16.min(digest.len())])
                 },
                 why,
-                if digest.is_empty() { " (could not read it)" } else { "" }
+                if digest.is_empty() {
+                    " (could not read it)"
+                } else {
+                    ""
+                }
             ));
         }
     }
     r.checked += KNOWN_DROPS.len() as i64 - unavailable;
-    r.set_metric("known_paths_checked", KNOWN_DROPS.len() as i64 - unavailable);
+    r.set_metric(
+        "known_paths_checked",
+        KNOWN_DROPS.len() as i64 - unavailable,
+    );
     if found > 0 {
         r.set_metric("known_paths_present", found);
     }
@@ -1127,8 +1141,8 @@ pub fn check_known_paths(r: &mut ModuleResult, ctx: &mut ScanContext, root: &str
 }
 
 fn fingerprint_file(path: &std::path::Path) -> Result<String, String> {
-    use std::io::Read;
     use sha2::Digest;
+    use std::io::Read;
     let mut h = sha2::Sha256::new();
     let mut fh = std::fs::File::open(path).map_err(|e| e.to_string())?;
     let mut buf = vec![0u8; 1024 * 1024];
@@ -1244,7 +1258,10 @@ fn check_dns_log_live(r: &mut ModuleResult, ctx: &mut ScanContext) {
                 .unwrap_or(false),
             record_count: rows[0]
                 .get("RecordCount")
-                .and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok())))
+                .and_then(|v| {
+                    v.as_i64()
+                        .or_else(|| v.as_str().and_then(|s| s.parse().ok()))
+                })
                 .unwrap_or(0),
         })
     };
@@ -1307,7 +1324,14 @@ fn ps(cmd: &str, timeout_secs: u64) -> Result<(i32, String, String), String> {
         cmd
     );
     let mut child = Command::new(ps_exe())
-        .args(["-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", &full])
+        .args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-ExecutionPolicy",
+            "Bypass",
+            "-Command",
+            &full,
+        ])
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         // A directory the scanner does not control, so the child cannot
@@ -1367,8 +1391,14 @@ fn ps_json(cmd: &str, timeout_secs: u64) -> (Vec<serde_json::Value>, String) {
     match serde_json::from_str::<serde_json::Value>(&text) {
         Ok(serde_json::Value::Array(list)) => (list, String::new()),
         Ok(v @ serde_json::Value::Object(_)) => (vec![v], String::new()),
-        Ok(_) => (Vec::new(), "unexpected JSON shape from PowerShell".to_string()),
-        Err(e) => (Vec::new(), format!("unparseable JSON from PowerShell: {}", e)),
+        Ok(_) => (
+            Vec::new(),
+            "unexpected JSON shape from PowerShell".to_string(),
+        ),
+        Err(e) => (
+            Vec::new(),
+            format!("unparseable JSON from PowerShell: {}", e),
+        ),
     }
 }
 
@@ -1395,7 +1425,14 @@ fn boot_time() -> (Option<String>, String) {
         60,
     );
     if !err.is_empty() || rows.is_empty() {
-        return (None, if err.is_empty() { "no result".to_string() } else { err });
+        return (
+            None,
+            if err.is_empty() {
+                "no result".to_string()
+            } else {
+                err
+            },
+        );
     }
     (Some(ps_str(&rows[0], &["Boot"])), String::new())
 }

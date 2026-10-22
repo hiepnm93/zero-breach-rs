@@ -140,7 +140,11 @@ pub fn build_document(iocs: &IocSet, modules: &[ModuleResult], started_unix: i64
                     "{}/{}: {}",
                     m.name,
                     c.name,
-                    if c.reason.is_empty() { "" } else { c.reason.as_str() }
+                    if c.reason.is_empty() {
+                        ""
+                    } else {
+                        c.reason.as_str()
+                    }
                 ));
             }
         }
@@ -269,7 +273,11 @@ fn describe_metrics(metrics: &Map<String, Value>) -> Vec<String> {
         if key == "dns_log_enabled" {
             out.push(format!(
                 "Windows DNS history logging: {}",
-                if n != 0 { "ON" } else { "OFF (the Windows default)" }
+                if n != 0 {
+                    "ON"
+                } else {
+                    "OFF (the Windows default)"
+                }
             ));
             continue;
         }
@@ -280,7 +288,6 @@ fn describe_metrics(metrics: &Map<String, Value>) -> Vec<String> {
     }
     out
 }
-
 
 /// Sanitize artifact-derived fields without changing the JSON evidence.
 ///
@@ -301,15 +308,16 @@ fn scrub(value: &Value, limit: usize) -> Value {
     }
 }
 
-const HIT_FIELD_LIMITS: [(&str, usize); 4] =
-    [("location", 500), ("detail", 500), ("observed", 64), ("profile", 120)];
+const HIT_FIELD_LIMITS: [(&str, usize); 4] = [
+    ("location", 500),
+    ("detail", 500),
+    ("observed", 64),
+    ("profile", 120),
+];
 
 fn human_document(document: &Value) -> Value {
     let mut doc = document.clone();
-    if let Some(modules) = doc
-        .get_mut("modules")
-        .and_then(|m| m.as_object_mut())
-    {
+    if let Some(modules) = doc.get_mut("modules").and_then(|m| m.as_object_mut()) {
         for (_name, m) in modules.iter_mut() {
             for key in ["notes", "checks", "reach"] {
                 if let Some(v) = m.get_mut(key) {
@@ -342,7 +350,9 @@ fn human_document(document: &Value) -> Value {
 /// contact an indicator — so it must not ship them in a fetchable form. The
 /// JSON report keeps the raw value; only the human text is defanged.
 pub fn defang(indicator: &str) -> String {
-    let out = indicator.replace("http://", "hxxp://").replace("https://", "hxxps://");
+    let out = indicator
+        .replace("https://", "hxxps://")
+        .replace("http://", "hxxp://");
     // Neuter the last dot (domains) or wrap every dot (IPs) so nothing resolves.
     if indicator.chars().any(|c| c.is_alphabetic()) && out.contains('.') {
         if let Some(i) = out.rfind('.') {
@@ -360,14 +370,13 @@ fn scheme_defang(text: &str) -> String {
     let bytes = text.as_bytes();
     let mut i = 0;
     while i < bytes.len() {
-        let rest = &text[i..];
-        let lower_len = rest.len().min(8);
-        let head = rest[..lower_len].to_lowercase();
-        let (replacement, used) = if head.starts_with("https://") {
+        let rest = &bytes[i..];
+        let (replacement, used) = if rest.len() >= 8 && rest[..8].eq_ignore_ascii_case(b"https://")
+        {
             ("hxxps://", 8)
-        } else if head.starts_with("http://") {
+        } else if rest.len() >= 7 && rest[..7].eq_ignore_ascii_case(b"http://") {
             ("hxxp://", 7)
-        } else if head.starts_with("ftp://") {
+        } else if rest.len() >= 6 && rest[..6].eq_ignore_ascii_case(b"ftp://") {
             ("fxp://", 6)
         } else {
             ("", 0)
@@ -376,7 +385,7 @@ fn scheme_defang(text: &str) -> String {
             out.push_str(replacement);
             i += used;
         } else {
-            let ch = rest.chars().next().unwrap();
+            let ch = text[i..].chars().next().unwrap();
             out.push(ch);
             i += ch.len_utf8();
         }
@@ -441,17 +450,15 @@ fn is_unsafe_char(c: char) -> bool {
 }
 
 fn safe_text(value: &str, limit: usize) -> String {
-    let text = value.replace("\r\n", " ").replace('\n', " ").replace('\r', " ");
+    let text = value.replace("\r\n", " ").replace(['\n', '\r'], " ");
     let mut out = String::with_capacity(text.len());
-    let mut count = 0usize;
     let mut truncated = false;
-    for c in text.chars() {
+    for (count, c) in text.chars().enumerate() {
         if count >= limit {
             truncated = true;
             break;
         }
         out.push(if is_unsafe_char(c) { '\u{FFFD}' } else { c });
-        count += 1;
     }
     if truncated {
         out.push('\u{2026}');
@@ -714,17 +721,22 @@ pub fn render_summary(document: &Value) -> String {
         out.push("  RESULT: no known indicator was found in anything that could be".to_string());
         out.push("          checked.".to_string());
         out.push(String::new());
-        out.push("  This is NOT a clean bill of health. See the two sections below for".to_string());
+        out.push(
+            "  This is NOT a clean bill of health. See the two sections below for".to_string(),
+        );
         out.push("  what was searched and, more importantly, what could not be.".to_string());
     } else if !serious.is_empty() {
         let n = serious.len();
-        let action = serious.iter().map(|h| recommended_action(h)).max().unwrap_or(0);
+        let action = serious
+            .iter()
+            .map(|h| recommended_action(h))
+            .max()
+            .unwrap_or(0);
         if action == 3 {
             out.push("  RESULT: SERIOUS FINDING - seek expert help promptly.".to_string());
         } else if action == 2 {
             out.push(
-                "  RESULT: potentially SERIOUS finding - qualified review recommended."
-                    .to_string(),
+                "  RESULT: potentially SERIOUS finding - qualified review recommended.".to_string(),
             );
         } else {
             out.push(format!(
@@ -768,12 +780,19 @@ pub fn render_summary(document: &Value) -> String {
             if !observed.is_empty() {
                 out.push(format!(
                     "          When: {}",
-                    observed.chars().take(19).collect::<String>().replace('T', " ")
+                    observed
+                        .chars()
+                        .take(19)
+                        .collect::<String>()
+                        .replace('T', " ")
                 ));
             }
             out.push(format!(
                 "          Where: {}",
-                defang_text(h["location"].as_str().unwrap_or(""), h["indicator"].as_str().unwrap_or(""))
+                defang_text(
+                    h["location"].as_str().unwrap_or(""),
+                    h["indicator"].as_str().unwrap_or("")
+                )
             ));
             out.push(String::new());
         }
@@ -820,7 +839,11 @@ pub fn render_summary(document: &Value) -> String {
 
     let gaps: Vec<String> = v["gaps"]
         .as_array()
-        .map(|a| a.iter().filter_map(|g| g.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|g| g.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     if !gaps.is_empty() {
         out.push(String::new());
@@ -848,7 +871,9 @@ pub fn render_summary(document: &Value) -> String {
         if dns_howto && gaps.iter().any(|g| g.to_lowercase().contains("dns")) {
             out.push(String::new());
             out.push("    -> You can fix the DNS gap for next time, in one command.".to_string());
-            out.push("       See \"HOW TO TURN ON DNS HISTORY\" further down. It tells you".to_string());
+            out.push(
+                "       See \"HOW TO TURN ON DNS HISTORY\" further down. It tells you".to_string(),
+            );
             out.push("       nothing about the past, but it means a future check can".to_string());
             out.push("       actually answer the question.".to_string());
         }
@@ -899,7 +924,11 @@ fn dedup_serious<'a>(hits: &[&'a Value]) -> Vec<&'a Value> {
 }
 
 fn next_steps(out: &mut Vec<String>, hits: &[&Value]) {
-    let action = hits.iter().map(|h| recommended_action(h)).max().unwrap_or(0);
+    let action = hits
+        .iter()
+        .map(|h| recommended_action(h))
+        .max()
+        .unwrap_or(0);
     out.push("  WHAT TO DO".to_string());
     if hits
         .iter()
@@ -1044,7 +1073,9 @@ fn next_steps(out: &mut Vec<String>, hits: &[&Value]) {
 
 fn support_options(out: &mut Vec<String>) {
     out.push("WHEN TO SEEK SUPPORT".to_string());
-    out.push("A credible targeting concern or a genuine security notification warrants".to_string());
+    out.push(
+        "A credible targeting concern or a genuine security notification warrants".to_string(),
+    );
     out.push("qualified help regardless of this scan's result. You do not need to".to_string());
     out.push("complete self-checks first. Contact your organisation's security team".to_string());
     out.push("or a qualified incident responder.".to_string());
@@ -1067,7 +1098,11 @@ fn support_options(out: &mut Vec<String>) {
 fn defang_report(text: &str, document: &Value) -> String {
     let mut indicators: Vec<String> = document["_indicators"]
         .as_array()
-        .map(|a| a.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(String::from))
+                .collect()
+        })
         .unwrap_or_default();
     if let Some(modules) = document["modules"].as_object() {
         for (_name, m) in modules {
@@ -1085,7 +1120,7 @@ fn defang_report(text: &str, document: &Value) -> String {
     let mut text = text.to_string();
     for indicator in &indicators {
         if !indicator.is_empty() && defang(indicator) != *indicator {
-            text = replace_ci(&text, indicator, |m| defang(m));
+            text = replace_ci(&text, indicator, defang);
         }
     }
     text
@@ -1093,8 +1128,16 @@ fn defang_report(text: &str, document: &Value) -> String {
 
 /// The window the AdFection campaign was actually active, from the Citizen Lab
 /// report: at least 45 targeted devices at Al Jazeera during 2024-2025.
-pub const CAMPAIGN_FROM: CivilDate = CivilDate { year: 2024, month: 1, day: 1 };
-pub const CAMPAIGN_TO: CivilDate = CivilDate { year: 2025, month: 12, day: 31 };
+pub const CAMPAIGN_FROM: CivilDate = CivilDate {
+    year: 2024,
+    month: 1,
+    day: 1,
+};
+pub const CAMPAIGN_TO: CivilDate = CivilDate {
+    year: 2025,
+    month: 12,
+    day: 31,
+};
 pub const CAMPAIGN_LABEL: &str = "2024-2025 (the documented campaign period)";
 
 /// Compare the dates reported by this scan with the campaign window.
@@ -1169,7 +1212,9 @@ fn render_reach(out: &mut Vec<String>, document: &Value) {
     out.push("HOW FAR BACK THIS SCAN COULD SEE".to_string());
     out.push(String::new());
     out.push("  These dates come from the records examined by this scan. They do not".to_string());
-    out.push("  establish a complete history; older or unread records may still exist:".to_string());
+    out.push(
+        "  establish a complete history; older or unread records may still exist:".to_string(),
+    );
     out.push(String::new());
 
     let mut earliest_overall: Option<CivilDate> = None;
@@ -1217,7 +1262,7 @@ fn render_reach(out: &mut Vec<String>, document: &Value) {
                 let year: i64 = year.parse().unwrap_or(0);
                 let count = count.as_i64().unwrap_or(0);
                 total_dated += count;
-                if CAMPAIGN_FROM.year <= year && year <= CAMPAIGN_TO.year {
+                if (CAMPAIGN_FROM.year..=CAMPAIGN_TO.year).contains(&year) {
                     in_window += count;
                 }
             }
@@ -1254,7 +1299,9 @@ fn render_reach(out: &mut Vec<String>, document: &Value) {
                 }
             }
         }
-        out.push("  Age of the browser cache files searched, by year (cache files only,".to_string());
+        out.push(
+            "  Age of the browser cache files searched, by year (cache files only,".to_string(),
+        );
         out.push("  not cookies or DNS - those are summarised above):".to_string());
         let year_strs: Vec<String> = merged
             .iter()
@@ -1279,15 +1326,26 @@ fn render_reach(out: &mut Vec<String>, document: &Value) {
             .filter(|y| merged.get(y).copied().unwrap_or(0) < 100)
             .collect();
         if in_window == 0 && !something_in_window {
-            out.push("  No dated evidence summarised here reaches the campaign period.".to_string());
-            out.push("  Older or unread records may still exist. A clean result cannot".to_string());
+            out.push(
+                "  No dated evidence summarised here reaches the campaign period.".to_string(),
+            );
+            out.push(
+                "  Older or unread records may still exist. A clean result cannot".to_string(),
+            );
             out.push("  rule out past contact during that period.".to_string());
         } else if in_window == 0 && something_in_window {
-            out.push("  No browser CACHE file examined dates from the campaign period, though some".to_string());
-            out.push("  older evidence (shown above) does. Cache is the thinnest record;".to_string());
+            out.push(
+                "  No browser CACHE file examined dates from the campaign period, though some"
+                    .to_string(),
+            );
+            out.push(
+                "  older evidence (shown above) does. Cache is the thinnest record;".to_string(),
+            );
             out.push("  the window above is the one to read.".to_string());
         } else if !sparse.is_empty() {
-            out.push("  BUT cache coverage is uneven. These campaign years have almost no".to_string());
+            out.push(
+                "  BUT cache coverage is uneven. These campaign years have almost no".to_string(),
+            );
             out.push("  surviving cache, so a clean result says little about them:".to_string());
             for y in &sparse {
                 out.push(format!(
@@ -1357,8 +1415,7 @@ pub fn render_human(document: &Value) -> String {
     };
     out.push(format!(
         "Indicator set : {} indicators, {}",
-        ioc["count"],
-        age_txt
+        ioc["count"], age_txt
     ));
     if ioc["stale"].as_bool().unwrap_or(false) {
         out.push(
@@ -1441,11 +1498,17 @@ pub fn render_human(document: &Value) -> String {
                         }
                         out.push(format!(
                             "            at     : {}",
-                            defang_text(h["location"].as_str().unwrap_or(""), h["indicator"].as_str().unwrap_or(""))
+                            defang_text(
+                                h["location"].as_str().unwrap_or(""),
+                                h["indicator"].as_str().unwrap_or("")
+                            )
                         ));
                         out.push(format!(
                             "            detail : {}",
-                            defang_text(h["detail"].as_str().unwrap_or(""), h["indicator"].as_str().unwrap_or(""))
+                            defang_text(
+                                h["detail"].as_str().unwrap_or(""),
+                                h["indicator"].as_str().unwrap_or("")
+                            )
                         ));
                         let observed = h["observed"].as_str().unwrap_or("");
                         if !observed.is_empty() {
@@ -1487,20 +1550,27 @@ pub fn render_human(document: &Value) -> String {
                 }
             }
         }
-        let counts_str: Vec<String> = counts
-            .iter()
-            .map(|(k, n)| format!("{} {}", n, k))
-            .collect();
+        let counts_str: Vec<String> = counts.iter().map(|(k, n)| format!("{} {}", n, k)).collect();
         out.push(format!("  By evidence strength: {}", counts_str.join(", ")));
         out.push(String::new());
-        out.push("  Follow the next steps in the summary. The indicator's role and the".to_string());
-        out.push("  evidence type determine those steps; the number of matches does not.".to_string());
+        out.push(
+            "  Follow the next steps in the summary. The indicator's role and the".to_string(),
+        );
+        out.push(
+            "  evidence type determine those steps; the number of matches does not.".to_string(),
+        );
         out.push("  A match means INVESTIGATE, not 'you are compromised'.".to_string());
-        out.push("  A match does not by itself establish that spyware ran on this device.".to_string());
+        out.push(
+            "  A match does not by itself establish that spyware ran on this device.".to_string(),
+        );
     } else {
         let gaps: Vec<String> = v["gaps"]
             .as_array()
-            .map(|a| a.iter().filter_map(|g| g.as_str().map(String::from)).collect())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|g| g.as_str().map(String::from))
+                    .collect()
+            })
             .unwrap_or_default();
         if !gaps.is_empty() {
             out.push("VERDICT: no known indicators found IN WHAT COULD BE CHECKED.".to_string());
@@ -1515,7 +1585,12 @@ pub fn render_human(document: &Value) -> String {
             out.push(String::new());
         }
         // D1: the mandatory closing line, verbatim.
-        out.push(document["doctrine_line"].as_str().unwrap_or(D1_LINE).to_string());
+        out.push(
+            document["doctrine_line"]
+                .as_str()
+                .unwrap_or(D1_LINE)
+                .to_string(),
+        );
         out.push(String::new());
     }
     out.push(String::new());

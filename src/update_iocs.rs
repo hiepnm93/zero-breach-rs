@@ -30,7 +30,8 @@ use clap::Args;
 
 use crate::iocs::{self, IocError};
 
-pub const DEFAULT_BASE: &str = "https://raw.githubusercontent.com/interplains/zero-breach/main/iocs/";
+pub const DEFAULT_BASE: &str =
+    "https://raw.githubusercontent.com/interplains/zero-breach/main/iocs/";
 const IOC_NAME: &str = "adfection_iocs.txt";
 
 #[derive(Args, Debug)]
@@ -55,7 +56,11 @@ fn fetch(url: &str) -> Result<Vec<u8>, String> {
         .timeout(Duration::from_secs(30))
         .user_agent("adint-scan-update")
         .build();
-    let mut reader = agent.get(url).call().map_err(|e| e.to_string())?.into_reader();
+    let mut reader = agent
+        .get(url)
+        .call()
+        .map_err(|e| e.to_string())?
+        .into_reader();
     let mut bytes = Vec::new();
     reader.read_to_end(&mut bytes).map_err(|e| e.to_string())?;
     Ok(bytes)
@@ -94,8 +99,16 @@ fn describe_change(old: &(String, String, String), new: &(String, String, String
     let mut parts = Vec::new();
     for (name, was, now) in fields {
         if was != now {
-            let was = if was.is_empty() { "(none)" } else { was.as_str() };
-            let now = if now.is_empty() { "(none)" } else { now.as_str() };
+            let was = if was.is_empty() {
+                "(none)"
+            } else {
+                was.as_str()
+            };
+            let now = if now.is_empty() {
+                "(none)"
+            } else {
+                now.as_str()
+            };
             parts.push(format!("{}={} -> {}", name, was, now));
         }
     }
@@ -148,10 +161,7 @@ pub fn main(args: UpdateArgs) -> i32 {
 
     // 3. Validity: it must parse as a non-empty indicator set BEFORE it can
     //    replace anything. A truncated or malformed download is refused here.
-    let tmp = match tempfile::Builder::new()
-        .prefix("adint_update_")
-        .tempdir()
-    {
+    let tmp = match tempfile::Builder::new().prefix("adint_update_").tempdir() {
         Ok(d) => d,
         Err(e) => {
             eprintln!("error: could not create a temporary directory: {}", e);
@@ -160,7 +170,10 @@ pub fn main(args: UpdateArgs) -> i32 {
     };
     let newfile = tmp.path().join(IOC_NAME);
     if let Err(e) = std::fs::write(&newfile, &data) {
-        eprintln!("error: could not write the download to a temporary file: {}", e);
+        eprintln!(
+            "error: could not write the download to a temporary file: {}",
+            e
+        );
         return 1;
     }
     let (new_meta, new_asof, new_count) = match index(&newfile) {
@@ -201,9 +214,7 @@ pub fn main(args: UpdateArgs) -> i32 {
         .collect();
     let changed: Vec<&String> = new_meta
         .keys()
-        .filter(|v| {
-            old_meta.contains_key(*v) && new_meta.get(*v) != old_meta.get(*v)
-        })
+        .filter(|v| old_meta.contains_key(*v) && new_meta.get(*v) != old_meta.get(*v))
         .collect();
     let asof_changed = old_count > 0 && new_asof != old_asof;
     println!(
@@ -296,9 +307,6 @@ pub fn main(args: UpdateArgs) -> i32 {
         eprintln!("error: could not write {}: {}", args.local, e);
         return 1;
     }
-    println!(
-        "\nupdated {} ({} indicators).",
-        args.local, new_count
-    );
+    println!("\nupdated {} ({} indicators).", args.local, new_count);
     0
 }

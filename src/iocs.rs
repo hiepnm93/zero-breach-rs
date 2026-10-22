@@ -22,11 +22,11 @@ use std::path::Path;
 use crate::datetime;
 
 pub const VALID_TIERS: [&str; 8] = [
-    "cc", // Candiru command-and-control (Citizen Lab, named in body)
-    "validator", // Candiru validator / target-selection servers
-    "delivery", // Discover-Tech / Controlium ad infrastructure
+    "cc",         // Candiru command-and-control (Citizen Lab, named in body)
+    "validator",  // Candiru validator / target-selection servers
+    "delivery",   // Discover-Tech / Controlium ad infrastructure
     "historical", // older, separate Candiru campaigns
-    "sample", // file hashes of the spyware itself
+    "sample",     // file hashes of the spyware itself
     // A legitimate, signed third-party driver or utility that this actor
     // abuses (bring-your-own-vulnerable-driver). Never proof of infection.
     "vuln-driver",
@@ -152,12 +152,7 @@ fn char_at(hay: &[u8], pos: usize) -> Option<u8> {
 /// Offsets are BYTE offsets; boundary decisions read single bytes, which is
 /// equivalent to the Python per-character sets because every member of those
 /// sets is ASCII.
-fn positions(
-    hay: &[u8],
-    needle: &[u8],
-    kind: &str,
-    wide: bool,
-) -> Vec<usize> {
+fn positions(hay: &[u8], needle: &[u8], kind: &str, wide: bool) -> Vec<usize> {
     let (left_bad, right_bad, cont) = bad_sets(kind, std::str::from_utf8(needle).unwrap_or(""));
     let unit = if wide { 2 } else { 1 };
     let at = |pos: isize| -> Option<u8> {
@@ -176,14 +171,14 @@ fn positions(
         let before = at(idx as isize - unit as isize);
         let after_pos = idx + needle.len();
         let after = at(after_pos as isize);
-        let mut ok = before.map_or(true, |b| !in_set(b, left_bad));
+        let mut ok = before.is_none_or(|b| !in_set(b, left_bad));
         if ok {
             if let Some(a) = after {
                 if in_set(a, right_bad) {
                     ok = false;
                 } else if a == b'.' {
                     let nxt = at((after_pos + unit) as isize);
-                    ok = nxt.map_or(true, |n| !in_set(n, cont));
+                    ok = nxt.is_none_or(|n| !in_set(n, cont));
                 }
             }
         }
@@ -205,10 +200,7 @@ fn find_from(hay: &[u8], needle: &[u8], from: usize) -> Option<usize> {
         .map(|p| p + from)
 }
 
-fn prune_parents(
-    found: Vec<(Indicator, Vec<(Encoding, usize)>)>,
-    hay: &[u8],
-) -> Vec<Indicator> {
+fn prune_parents(found: Vec<(Indicator, Vec<(Encoding, usize)>)>, hay: &[u8]) -> Vec<Indicator> {
     // Drop a parent domain whose every occurrence is just the tail of a
     // matched child. "noas.powerium.net" in a cookie also contains
     // "powerium.net", and both are indicators — but it is ONE contact, and
@@ -284,9 +276,7 @@ pub fn infer_type(indicator: &str) -> &'static str {
     if s.len() == 64 && s.bytes().all(|b| in_set(b, HEX)) {
         return TYPE_SHA256;
     }
-    if is_ipv4(&s)
-        || (s.contains(':') && s.bytes().all(|b| in_set(b, HEX_COLON)))
-    {
+    if is_ipv4(&s) || (s.contains(':') && s.bytes().all(|b| in_set(b, HEX_COLON))) {
         return TYPE_IP;
     }
     TYPE_DOMAIN
@@ -317,12 +307,9 @@ impl IocSet {
     pub fn new(indicators: Vec<Indicator>, source_path: &str, mtime: Option<i64>) -> Self {
         let mut needles = HashMap::new();
         for ind in &indicators {
-            needles.entry(ind.value.clone()).or_insert_with(|| {
-                (
-                    ind.value.as_bytes().to_vec(),
-                    ind.value.encode_utf16_le(),
-                )
-            });
+            needles
+                .entry(ind.value.clone())
+                .or_insert_with(|| (ind.value.as_bytes().to_vec(), ind.value.encode_utf16_le()));
         }
         IocSet {
             indicators,
@@ -349,7 +336,10 @@ impl IocSet {
     }
 
     pub fn ips(&self) -> Vec<&Indicator> {
-        self.indicators.iter().filter(|i| i.kind == TYPE_IP).collect()
+        self.indicators
+            .iter()
+            .filter(|i| i.kind == TYPE_IP)
+            .collect()
     }
 
     pub fn hashes(&self) -> Vec<&Indicator> {
@@ -411,11 +401,10 @@ impl IocSet {
     pub fn search_bytes(&self, haystack_lower: &[u8]) -> Vec<Indicator> {
         let mut found = Vec::new();
         for ind in self.net_indicators() {
-            let (narrow, wide) = self
-                .needles
-                .get(&ind.value)
-                .cloned()
-                .unwrap_or_else(|| (ind.value.as_bytes().to_vec(), ind.value.encode_utf16_le()));
+            let (narrow, wide) =
+                self.needles.get(&ind.value).cloned().unwrap_or_else(|| {
+                    (ind.value.as_bytes().to_vec(), ind.value.encode_utf16_le())
+                });
             let mut occ = Vec::new();
             if find_from(haystack_lower, &narrow, 0).is_some() {
                 occ.extend(
@@ -519,14 +508,10 @@ fn value_problem(value: &str, kind: &str) -> Option<String> {
             return Some("a hostname needs at least one dot".to_string());
         }
         for label in labels {
-            let ok = (1..=63).contains(&label.len())
-                && is_hostname_label(label);
+            let ok = (1..=63).contains(&label.len()) && is_hostname_label(label);
             if !ok {
                 let short: String = label.chars().take(70).collect();
-                return Some(format!(
-                    "label '{}' is not a valid hostname label",
-                    short
-                ));
+                return Some(format!("label '{}' is not a valid hostname label", short));
             }
         }
         return None;
@@ -561,8 +546,7 @@ pub fn load(path: &Path) -> Result<IocSet, IocError> {
     if !path.exists() {
         return Err(IocError(format!("IOC file not found: {}", path.display())));
     }
-    let raw = std::fs::read(path)
-        .map_err(|e| IocError(format!("IOC file not readable: {}", e)))?;
+    let raw = std::fs::read(path).map_err(|e| IocError(format!("IOC file not readable: {}", e)))?;
     // utf-8-sig, not utf-8: Windows editors save a byte-order mark, and
     // U+FEFF is not whitespace to a strip(). With plain utf-8 the first
     // indicator in a user's own list silently became "﻿controlium.net",
@@ -576,11 +560,7 @@ pub fn load(path: &Path) -> Result<IocSet, IocError> {
         .and_then(|m| m.modified().ok())
         .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
         .map(|d| d.as_secs() as i64);
-    parse(
-        &text,
-        &path.to_string_lossy(),
-        mtime,
-    )
+    parse(&text, &path.to_string_lossy(), mtime)
 }
 
 /// Parse indicator text (already BOM-stripped and UTF-8) into a set.
@@ -756,11 +736,7 @@ fn punycode_encode(input: &str) -> Option<String> {
     let mut h = b;
     let total = chars.len() as u32;
     while h < total {
-        let m = chars
-            .iter()
-            .map(|c| *c as u32)
-            .filter(|c| *c >= n)
-            .min()?;
+        let m = chars.iter().map(|c| *c as u32).filter(|c| *c >= n).min()?;
         delta = delta.checked_add((m - n).checked_mul(h + 1)?)?;
         n = m;
         for c in &chars {
@@ -969,19 +945,25 @@ mod tests {
             "a hostname needs at least one dot"
         );
         assert_eq!(value_problem("a.example", TYPE_DOMAIN), None);
+        assert!(value_problem("-bad.example", TYPE_DOMAIN).is_some());
+        assert!(value_problem("0.0.0.0", TYPE_IP).is_some());
         assert_eq!(
-            value_problem("-bad.example", TYPE_DOMAIN).is_some(),
-            true
+            value_problem("0.0", TYPE_IP).unwrap(),
+            "not a valid IP address"
         );
-        assert_eq!(value_problem("0.0.0.0", TYPE_IP).is_some(), true);
-        assert_eq!(value_problem("0.0", TYPE_IP).unwrap(), "not a valid IP address");
         assert_eq!(value_problem("52.174.65.77", TYPE_IP), None);
     }
 
     #[test]
     fn asof_header_is_read() {
-        assert_eq!(parse_asof("# as-of: 2026-10-18").as_deref(), Some("2026-10-18"));
-        assert_eq!(parse_asof("#as-of:2026-10-18").as_deref(), Some("2026-10-18"));
+        assert_eq!(
+            parse_asof("# as-of: 2026-10-18").as_deref(),
+            Some("2026-10-18")
+        );
+        assert_eq!(
+            parse_asof("#as-of:2026-10-18").as_deref(),
+            Some("2026-10-18")
+        );
         assert_eq!(parse_asof("# something else"), None);
     }
 }

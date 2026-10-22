@@ -166,7 +166,7 @@ mod tests {
         assert_eq!(civil_from_days(0).iso(), "1970-01-01");
         assert_eq!(parse_date("2024-01-01").unwrap().to_days(), 19_723);
         assert_eq!(iso_from_unix(0), "1970-01-01T00:00:00");
-        assert_eq!(iso_from_unix(1_740_000_000), "2025-02-19T20:00:00");
+        assert_eq!(iso_from_unix(1_740_000_000), "2025-02-19T21:20:00");
     }
 
     #[test]

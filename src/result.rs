@@ -290,6 +290,7 @@ mod tests {
     fn unknown_is_not_clean() {
         let r = ModuleResult::new("m");
         assert_eq!(r.status(), UNKNOWN);
+        let mut r = r;
         r.ran("a");
         assert_eq!(r.status(), CLEAN);
         let mut r2 = ModuleResult::new("m");
@@ -353,8 +354,8 @@ mod tests {
         r.bump_metric("blob", 1);
         r.bump_metric("sqlite", 2);
         assert_eq!(r.metric("sqlite"), 3);
-        let keys: Vec<&str> = r
-            .to_json()["submetrics"]
+        let doc = r.to_json();
+        let keys: Vec<&str> = doc["submetrics"]
             .as_object()
             .unwrap()
             .keys()

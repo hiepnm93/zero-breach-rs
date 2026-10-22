@@ -25,7 +25,6 @@ use crate::localpaths::{normcase, normpath, path_problem, walk_local, WalkHandle
 use crate::result::{Hit, ModuleResult, EV_ON_DISK};
 use crate::text::fmt_count;
 
-
 pub const NAME: &str = "hash";
 
 /// Only file types a payload plausibly ships as. Keeps the walk cheap and
@@ -100,11 +99,12 @@ pub fn roots_from(
     let mut kept = Vec::new();
     for r1 in &resolved {
         let nested = resolved.iter().any(|r2| {
-            r1 != r2 && r1.to_string_lossy().starts_with(&format!(
-                "{}{}",
-                r2.to_string_lossy(),
-                std::path::MAIN_SEPARATOR
-            ))
+            r1 != r2
+                && r1.to_string_lossy().starts_with(&format!(
+                    "{}{}",
+                    r2.to_string_lossy(),
+                    std::path::MAIN_SEPARATOR
+                ))
         });
         if !nested {
             kept.push(r1.clone());

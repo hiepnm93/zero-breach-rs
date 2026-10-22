@@ -21,7 +21,7 @@ use std::time::Instant;
 
 use clap::{Parser, Subcommand};
 
-use crate::context::{ScanContext, default_emit};
+use crate::context::{default_emit, ScanContext};
 use crate::iocs::{self, IocError, IocSet};
 use crate::localpaths::path_problem;
 use crate::modules::{browser, hashscan, host, patternscan};
@@ -128,9 +128,7 @@ fn refuse_remote(label: &str, value: &str) -> bool {
     if let Some(problem) = path_problem(&abs) {
         eprintln!(
             "error: {} {}: {} - use a path on a local disk",
-            label,
-            value,
-            problem
+            label, value, problem
         );
         return true;
     }
@@ -166,12 +164,24 @@ fn run_modules(ctx: &mut ScanContext) -> Vec<ModuleResult> {
         run: fn(&mut ScanContext) -> ModuleResult,
     }
     let mut modules: Vec<Module> = vec![
-        Module { name: browser::NAME, run: browser::run },
-        Module { name: hashscan::NAME, run: hashscan::run },
-        Module { name: host::NAME, run: host::run },
+        Module {
+            name: browser::NAME,
+            run: browser::run,
+        },
+        Module {
+            name: hashscan::NAME,
+            run: hashscan::run,
+        },
+        Module {
+            name: host::NAME,
+            run: host::run,
+        },
     ];
     if ctx.patterns {
-        modules.push(Module { name: patternscan::NAME, run: patternscan::run });
+        modules.push(Module {
+            name: patternscan::NAME,
+            run: patternscan::run,
+        });
     }
 
     for module in modules {
@@ -195,9 +205,7 @@ fn run_modules(ctx: &mut ScanContext) -> Vec<ModuleResult> {
         ctx.emit(&format!("[*] running check: {}", module.name));
         let started = Instant::now();
         ctx.partial = None;
-        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            (module.run)(ctx)
-        }));
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| (module.run)(ctx)));
         let mut result = match outcome {
             Ok(r) => r,
             // Keep what the module had already found. Replacing it with a
@@ -286,10 +294,7 @@ pub fn scan(args: ScanArgs) -> i32 {
             // The human report already printed; a failed JSON write must not
             // bury it under a traceback. Report the failure and keep the
             // verdict code.
-            Err(e) => eprintln!(
-                "\n[could not write JSON report to {}: {}]",
-                json_path, e
-            ),
+            Err(e) => eprintln!("\n[could not write JSON report to {}: {}]", json_path, e),
         }
     }
 

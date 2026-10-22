@@ -32,12 +32,23 @@ use crate::context::ScanContext;
 use crate::datetime;
 use crate::iocs::{Indicator, IocSet, TYPE_DOMAIN};
 use crate::localpaths::{local_temp_dir, path_problem, walk_local, WalkHandler, WalkProblem};
-use crate::result::{
-    Hit, ModuleResult, EV_CONTACTED, EV_REFERENCED,
-};
+use crate::result::{Hit, ModuleResult, EV_CONTACTED, EV_REFERENCED};
 use crate::text::{fmt_count, sha256_b64};
 
 pub const NAME: &str = "browser";
+
+/// The cookie columns this module is willing to ask for. Cookie values are
+/// never among them: reading host names and timestamps is all indicator
+/// matching needs, and widening this list has to be a deliberate act that
+/// fails the not-infostealer test first (tests/not_infostealer.rs).
+pub const CHROMIUM_COOKIE_COLUMNS: [&str; 5] = [
+    "host_key",
+    "name",
+    "creation_utc",
+    "last_access_utc",
+    "top_frame_site_key",
+];
+pub const FIREFOX_COOKIE_COLUMNS: [&str; 4] = ["host", "name", "creationTime", "lastAccessed"];
 
 /// Largest browser database we will snapshot, siblings included. Real
 /// History / Cookies files are tens of MB; 1 GiB leaves generous headroom.
@@ -72,11 +83,7 @@ pub fn sys_platform() -> &'static str {
 
 /// Chromium user-data roots as (label, path), chosen by platform.
 pub fn chromium_roots() -> Vec<(String, PathBuf)> {
-    chromium_roots_for(
-        sys_platform(),
-        &home_dir(),
-        &env_path("LOCALAPPDATA"),
-    )
+    chromium_roots_for(sys_platform(), &home_dir(), &env_path("LOCALAPPDATA"))
 }
 
 /// The same table, parameterised so tests can point it at a fixture tree.
@@ -154,11 +161,15 @@ pub fn chromium_roots_for(platform: &str, home: &Path, local: &Path) -> Vec<(Str
                 ),
                 (
                     "chromium-flatpak",
-                    var.join("org.chromium.Chromium").join("config").join("chromium"),
+                    var.join("org.chromium.Chromium")
+                        .join("config")
+                        .join("chromium"),
                 ),
                 (
                     "vivaldi-flatpak",
-                    var.join("com.vivaldi.Vivaldi").join("config").join("vivaldi"),
+                    var.join("com.vivaldi.Vivaldi")
+                        .join("config")
+                        .join("vivaldi"),
                 ),
             ]
             .into_iter()
@@ -187,7 +198,10 @@ pub fn firefox_roots() -> Vec<(PathBuf, PathBuf)> {
                 .join("Application Support")
                 .join("Firefox")
                 .join("Profiles"),
-            home.join("Library").join("Caches").join("Firefox").join("Profiles"),
+            home.join("Library")
+                .join("Caches")
+                .join("Firefox")
+                .join("Profiles"),
         )];
     }
     if sys_platform().starts_with("linux") {
@@ -280,15 +294,13 @@ impl SnapError {
 /// VALUES even though the queries only read metadata.
 pub struct Snapshot {
     dir: Option<tempfile::TempDir>,
+    db: PathBuf,
 }
 
 impl Snapshot {
+    /// Path of the copied database inside the snapshot directory.
     pub fn db_path(&self) -> PathBuf {
-        self.dir
-            .as_ref()
-            .expect("snapshot present")
-            .path()
-            .to_path_buf()
+        self.db.clone()
     }
 
     /// Close the open handle, then delete the snapshot — and check it is gone.
@@ -385,15 +397,14 @@ pub fn copy_locked(path: &Path) -> Result<(Snapshot, Vec<String>), SnapError> {
             incomplete.push(format!("{} ({})", suffix, problem));
             continue;
         }
-        if sibling.exists() {
-            if let Err(_) = std::fs::copy(&sibling, sibling_path(&base, suffix)) {
-                incomplete.push(suffix.to_string());
-            }
+        if sibling.exists() && std::fs::copy(&sibling, sibling_path(&base, suffix)).is_err() {
+            incomplete.push(suffix.to_string());
         }
     }
     Ok((
         Snapshot {
             dir: Some(tmpdir),
+            db: base,
         },
         incomplete,
     ))
@@ -442,7 +453,9 @@ pub fn chromium_profile_names(user_data: &Path) -> HashMap<String, String> {
 /// basenames profiles.ini lists as profiles}). profiles.ini sits INSIDE
 /// profiles_dir on Linux but one level ABOVE it on Windows/macOS: try both,
 /// the first readable one wins.
-pub fn firefox_ini(profiles_dir: &Path) -> (HashMap<String, String>, std::collections::HashSet<String>) {
+pub fn firefox_ini(
+    profiles_dir: &Path,
+) -> (HashMap<String, String>, std::collections::HashSet<String>) {
     let mut names = HashMap::new();
     let mut known = std::collections::HashSet::new();
     let mut flush = |sec: &HashMap<String, String>| {
@@ -590,10 +603,7 @@ pub fn host_of(origin: &str) -> String {
         Some(i) => &rest[i + 3..],
         None => rest.trim_start_matches('/'),
     };
-    let authority = after_scheme
-        .split(['/', '?', '#'])
-        .next()
-        .unwrap_or("");
+    let authority = after_scheme.split(['/', '?', '#']).next().unwrap_or("");
     let authority = authority.rsplit('@').next().unwrap_or(authority);
     let host = if let Some(rest) = authority.strip_prefix('[') {
         match rest.split_once(']') {
@@ -672,10 +682,7 @@ impl Cell {
         match self {
             Cell::Null => String::new(),
             Cell::Int(i) => i.to_string(),
-            Cell::Real(f) => {
-                let s = f.to_string();
-                s
-            }
+            Cell::Real(f) => f.to_string(),
             Cell::Text(t) => t.clone(),
             Cell::Blob(b) => String::from_utf8_lossy(b).into_owned(),
         }
@@ -704,7 +711,7 @@ impl Cell {
 
 /// Python's `a or b` over named columns: the first truthy value, else the
 /// last value examined.
-fn cell_or<'a>(record: &'a [(String, Cell)], keys: &[&str]) -> Cell {
+fn cell_or(record: &[(String, Cell)], keys: &[&str]) -> Cell {
     let mut last = Cell::Null;
     for key in keys {
         if let Some((_, v)) = record.iter().find(|(k, _)| k == key) {
@@ -717,7 +724,7 @@ fn cell_or<'a>(record: &'a [(String, Cell)], keys: &[&str]) -> Cell {
     last
 }
 
-fn get<'a>(record: &'a [(String, Cell)], key: &str) -> Cell {
+fn get(record: &[(String, Cell)], key: &str) -> Cell {
     record
         .iter()
         .find(|(k, _)| k == key)
@@ -742,7 +749,10 @@ fn read_row(row: &rusqlite::Row<'_>, ncols: usize) -> rusqlite::Result<Vec<Cell>
     Ok(cells)
 }
 
-fn present_columns(con: &Connection, table: &str) -> Result<std::collections::HashSet<String>, String> {
+fn present_columns(
+    con: &Connection,
+    table: &str,
+) -> Result<std::collections::HashSet<String>, String> {
     let sql = format!("PRAGMA table_info({})", table);
     let mut stmt = con.prepare(&sql).map_err(|e| e.to_string())?;
     let ncols = stmt.column_count();
@@ -806,7 +816,7 @@ struct BrowserScanner<'a, 'b> {
     history_rows: bool,
     current: String,
     kinds: Vec<((String, String), KindState)>,
-    snapshot: Box<dyn FnMut(&Path) -> Result<(Snapshot, Vec<String>), SnapError>>,
+    snapshot: Box<SnapshotFn>,
 }
 
 #[derive(Default, Clone, Debug)]
@@ -822,12 +832,7 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
         if !self.kinds.iter().any(|(k, _)| *k == key) {
             self.kinds.push((key.clone(), KindState::default()));
         }
-        &mut self
-            .kinds
-            .iter_mut()
-            .find(|(k, _)| *k == key)
-            .unwrap()
-            .1
+        &mut self.kinds.iter_mut().find(|(k, _)| *k == key).unwrap().1
     }
 
     fn mark_ok(&mut self, label: &str, kind: &str) {
@@ -851,7 +856,14 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
         self.r.checked += 1;
     }
 
-    fn record_hit(&mut self, path: &Path, ind: &Indicator, detail: &str, evidence: &str, observed: &str) {
+    fn record_hit(
+        &mut self,
+        path: &Path,
+        ind: &Indicator,
+        detail: &str,
+        evidence: &str,
+        observed: &str,
+    ) {
         self.r.add_hit(Hit {
             indicator: ind.value.clone(),
             location: path.to_string_lossy().into_owned(),
@@ -871,12 +883,7 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
     /// (recorded as a failure for this (label, kind), promoted to a gap only
     /// if no profile ever reads it).
     #[allow(clippy::type_complexity)]
-    fn open_db(
-        &mut self,
-        path: &Path,
-        label: &str,
-        kind: &str,
-    ) -> Option<(Connection, Snapshot)> {
+    fn open_db(&mut self, path: &Path, label: &str, kind: &str) -> Option<(Connection, Snapshot)> {
         if let Some(problem) = path_problem(path) {
             self.r.skipped += 1;
             let note = format!("{}: {}", path.display(), problem);
@@ -933,7 +940,9 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
             let note = format!(
                 "{}: snapshot is incomplete - could not copy {} alongside it, so \
                  recently written rows may be missing from this read",
-                path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default(),
+                path.file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default(),
                 incomplete.join(", ")
             );
             self.r.note(&note);
@@ -1019,18 +1028,11 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
                         self.history_rows = true;
                     }
                     for row in rows {
-                        let record: Vec<(String, Cell)> = cols
-                            .iter()
-                            .cloned()
-                            .zip(row.into_iter())
-                            .collect();
+                        let record: Vec<(String, Cell)> = cols.iter().cloned().zip(row).collect();
                         let url = get(&record, "url").text();
                         let title = get(&record, "title").text();
                         let blob = format!("{} {}", url, title).to_lowercase();
-                        let observed = fmt_time(
-                            flavour,
-                            &get(&record, visit_col),
-                        );
+                        let observed = fmt_time(flavour, &get(&record, visit_col));
                         // Firefox's places database also stores never-visited
                         // bookmarks. A URL row alone does not establish a visit.
                         let mut has_visit = flavour != "firefox";
@@ -1073,7 +1075,10 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
         }
 
         if flavour == "chromium" && !failed {
-            match select_all(&con, "SELECT current_path, tab_url, referrer FROM downloads") {
+            match select_all(
+                &con,
+                "SELECT current_path, tab_url, referrer FROM downloads",
+            ) {
                 Err(e) => {
                     if !is_schema_drift(&e) {
                         let err = SnapError {
@@ -1095,8 +1100,7 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
                             .collect::<Vec<_>>()
                             .join(" ")
                             .to_lowercase();
-                        let matched =
-                            self.ctx.iocs.most_specific(self.ctx.iocs.search(&blob));
+                        let matched = self.ctx.iocs.most_specific(self.ctx.iocs.search(&blob));
                         for ind in matched {
                             self.record_hit(
                                 path,
@@ -1123,7 +1127,9 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
             self.r.note(&format!(
                 "could not remove the temporary snapshot of {} - a copy may \
                  remain in the system temp directory",
-                path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                path.file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default()
             ));
         }
     }
@@ -1170,7 +1176,11 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
                     let (url, ev) = if sql.1 {
                         let url = row.first().map(|c| c.text()).unwrap_or_default();
                         let has_bitmap = row.get(1).map(|c| c.truthy()).unwrap_or(false);
-                        let ev = if has_bitmap { EV_CONTACTED } else { EV_REFERENCED };
+                        let ev = if has_bitmap {
+                            EV_CONTACTED
+                        } else {
+                            EV_REFERENCED
+                        };
                         (url, ev)
                     } else {
                         let url = row.first().map(|c| c.text()).unwrap_or_default();
@@ -1205,7 +1215,9 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
             self.r.note(&format!(
                 "could not remove the temporary snapshot of {} - a copy may \
                  remain in the system temp directory",
-                path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                path.file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default()
             ));
         }
     }
@@ -1231,7 +1243,11 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
             Some(v) => v,
             None => return,
         };
-        let table = if flavour == "chromium" { "cookies" } else { "moz_cookies" };
+        let table = if flavour == "chromium" {
+            "cookies"
+        } else {
+            "moz_cookies"
+        };
         let present = match present_columns(&con, table) {
             Ok(p) => p,
             Err(e) => {
@@ -1248,17 +1264,15 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
             }
         };
         let candidates: Vec<&str> = if flavour == "chromium" {
-            vec![
-                "host_key",
-                "name",
-                "creation_utc",
-                "last_access_utc",
-                "top_frame_site_key",
-            ]
+            CHROMIUM_COOKIE_COLUMNS.to_vec()
         } else {
-            vec!["host", "name", "creationTime", "lastAccessed"]
+            FIREFOX_COOKIE_COLUMNS.to_vec()
         };
-        let host_column = if flavour == "chromium" { "host_key" } else { "host" };
+        let host_column = if flavour == "chromium" {
+            "host_key"
+        } else {
+            "host"
+        };
         let wanted: Vec<String> = candidates
             .iter()
             .filter(|c| present.contains(**c))
@@ -1272,7 +1286,9 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
                 &format!(
                     "the cookie store {} had no supported host column, so its \
                      cookie origins could not be searched",
-                    path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                    path.file_name()
+                        .map(|n| n.to_string_lossy())
+                        .unwrap_or_default()
                 ),
             );
             snapshot.discard(Some(con));
@@ -1301,8 +1317,7 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
         self.cookie_stores += 1;
 
         for row in rows {
-            let record: Vec<(String, Cell)> =
-                wanted.iter().cloned().zip(row.into_iter()).collect();
+            let record: Vec<(String, Cell)> = wanted.iter().cloned().zip(row).collect();
             let host = cell_or(&record, &["host_key", "host"]).text();
             let host_lower = host.to_lowercase();
             let matched = self
@@ -1310,14 +1325,24 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
                 .iocs
                 .most_specific(self.ctx.iocs.search(&host_lower));
             for ind in matched {
-                let created = fmt_time(flavour, &cell_or(&record, &["creation_utc", "creationTime"]));
-                let seen = fmt_time(flavour, &cell_or(&record, &["last_access_utc", "lastAccessed"]));
+                let created = fmt_time(
+                    flavour,
+                    &cell_or(&record, &["creation_utc", "creationTime"]),
+                );
+                let seen = fmt_time(
+                    flavour,
+                    &cell_or(&record, &["last_access_utc", "lastAccessed"]),
+                );
                 let partition = get(&record, "top_frame_site_key").text().trim().to_string();
                 let mut bits = vec![
                     format!("cookie set by {}", host),
                     format!("name {}", {
                         let n = get(&record, "name");
-                        if n.truthy() { n.text() } else { "?".to_string() }
+                        if n.truthy() {
+                            n.text()
+                        } else {
+                            "?".to_string()
+                        }
                     }),
                 ];
                 if !partition.is_empty() {
@@ -1349,7 +1374,11 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
             }
         }
         // Oldest cookie overall, for the time-coverage section.
-        let col = if flavour == "chromium" { "creation_utc" } else { "creationTime" };
+        let col = if flavour == "chromium" {
+            "creation_utc"
+        } else {
+            "creationTime"
+        };
         if present.contains(col) {
             let sql = format!("SELECT MIN({0}) FROM {1} WHERE {0} > 0", col, table);
             if let Ok(rows) = select_all(&con, &sql) {
@@ -1370,7 +1399,9 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
             self.r.note(&format!(
                 "could not remove the temporary snapshot of {} - a copy may \
                  remain in the system temp directory",
-                path.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                path.file_name()
+                    .map(|n| n.to_string_lossy())
+                    .unwrap_or_default()
             ));
         }
     }
@@ -1457,9 +1488,7 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
                                     let mtime = st
                                         .modified()
                                         .ok()
-                                        .and_then(|t| {
-                                            t.duration_since(std::time::UNIX_EPOCH).ok()
-                                        })
+                                        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
                                         .map(|d| d.as_secs() as i64)
                                         .unwrap_or(0);
                                     self.mtimes.push(mtime);
@@ -1473,8 +1502,7 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
                                 Err(e) => {
                                     // unreadable file — a gap, not clean
                                     self.scanner.r.skipped += 1;
-                                    let note =
-                                        format!("could not read {}: {}", full.display(), e);
+                                    let note = format!("could not read {}: {}", full.display(), e);
                                     self.scanner.r.note(&note);
                                     self.failures.push(note);
                                     continue;
@@ -1615,7 +1643,10 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
                                      received an HSTS header from it over HTTPS",
                                 );
                                 if !when.is_empty() {
-                                    detail.push_str(&format!(" (observed {})", &when[..10.min(when.len())]));
+                                    detail.push_str(&format!(
+                                        " (observed {})",
+                                        &when[..10.min(when.len())]
+                                    ));
                                 }
                                 self.record_hit(&ts_path, &ind, &detail, EV_CONTACTED, &when);
                             }
@@ -1660,7 +1691,8 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
         if nps_present {
             match self.read_nps(&nps_path) {
                 Ok(origins) => {
-                    self.r.bump_metric("connection_records", origins.len() as i64);
+                    self.r
+                        .bump_metric("connection_records", origins.len() as i64);
                     self.r.checked += origins.len() as i64;
                     self.mark_ok(label, "connection-records");
                     for (host, what) in origins {
@@ -1705,7 +1737,10 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
         let data = self.read_json_file(path).map_err(|e| {
             if e.contains("HSTS state must be an object") {
                 e
-            } else if e.contains("expected value") || e.contains("EOF") || e.contains("key must be a string") {
+            } else if e.contains("expected value")
+                || e.contains("EOF")
+                || e.contains("key must be a string")
+            {
                 format!("HSTS state must be an object: {}", e)
             } else {
                 e
@@ -1728,11 +1763,17 @@ impl<'a, 'b> BrowserScanner<'a, 'b> {
         if !net.is_object() {
             return Err("network state 'net' must be an object".to_string());
         }
-        let hsp = net.get("http_server_properties").cloned().unwrap_or(Value::Null);
+        let hsp = net
+            .get("http_server_properties")
+            .cloned()
+            .unwrap_or(Value::Null);
         if !hsp.is_object() {
             return Err("http_server_properties must be an object".to_string());
         }
-        for (field, host_field) in [("servers", "server"), ("broken_alternative_services", "host")] {
+        for (field, host_field) in [
+            ("servers", "server"),
+            ("broken_alternative_services", "host"),
+        ] {
             let entries = hsp.get(field).cloned().unwrap_or(Value::Null);
             match entries {
                 Value::Array(list) => {
@@ -1842,18 +1883,27 @@ fn collected_blob_count(mtimes: &[i64]) -> i64 {
 
 /// Browser artifact locations, overridable for hermetic tests the way the
 /// Python suite monkeypatched CHROMIUM_ROOTS / FIREFOX_ROOTS.
-#[derive(Clone, Debug, Default)]
+#[derive(Default)]
 pub struct BrowserConfig {
     pub chromium: Vec<(String, PathBuf)>,
     /// None means "derive from the platform at run() time".
     pub firefox: Option<Vec<(PathBuf, PathBuf)>>,
+    /// Test hook: replace the database snapshot routine (the Python suite
+    /// monkeypatched browser.copy_locked to simulate a locked database).
+    pub snapshot: Option<SnapshotRc>,
 }
+
+/// A snapshot routine: path in, temp copy (+ incompletely copied siblings)
+/// out, or a refusal. Shared so one config can drive several runs.
+pub type SnapshotFn = dyn FnMut(&Path) -> Result<(Snapshot, Vec<String>), SnapError>;
+pub type SnapshotRc = std::rc::Rc<std::cell::RefCell<SnapshotFn>>;
 
 impl BrowserConfig {
     pub fn detect() -> BrowserConfig {
         BrowserConfig {
             chromium: chromium_roots(),
             firefox: None,
+            snapshot: None,
         }
     }
 }
@@ -1866,6 +1916,22 @@ pub fn run(ctx: &mut ScanContext) -> ModuleResult {
 
 /// Scan an explicit set of browser roots (tests, or a future --browser flag).
 pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
+    let snapshot: Box<SnapshotFn> = match &cfg.snapshot {
+        Some(f) => {
+            let f = std::rc::Rc::clone(f);
+            Box::new(move |p: &Path| f.borrow_mut()(p))
+        }
+        None => Box::new(copy_locked),
+    };
+    run_with_snapshot(ctx, cfg, snapshot)
+}
+
+/// Scan with an explicit snapshot routine.
+pub fn run_with_snapshot(
+    ctx: &mut ScanContext,
+    cfg: &BrowserConfig,
+    snapshot: Box<SnapshotFn>,
+) -> ModuleResult {
     let mut scanner = BrowserScanner {
         ctx,
         r: ModuleResult::new(NAME),
@@ -1875,7 +1941,7 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
         history_rows: false,
         current: String::new(),
         kinds: Vec::new(),
-        snapshot: Box::new(copy_locked),
+        snapshot,
     };
     scanner.ctx.publish_partial(&scanner.r);
     scanner.r.set_metric("sqlite", 0);
@@ -1902,9 +1968,10 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
     // --- Chromium family -------------------------------------------------
     for (label, root) in &cfg.chromium {
         if let Some(problem) = path_problem(root) {
-            scanner
-                .r
-                .could_not_run(&format!("{}:profiles", label), &format!("{}: {}", root.display(), problem));
+            scanner.r.could_not_run(
+                &format!("{}:profiles", label),
+                &format!("{}: {}", root.display(), problem),
+            );
             continue;
         }
         if !root.is_dir() {
@@ -1916,7 +1983,9 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
                 // One bad ACL on the user-data root must not abort the module.
                 let err = SnapError::plain(e);
                 let note = locked_note(root, &err);
-                scanner.r.could_not_run(&format!("{}:profiles", label), &note);
+                scanner
+                    .r
+                    .could_not_run(&format!("{}:profiles", label), &note);
                 continue;
             }
         };
@@ -1932,7 +2001,9 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
                     &format!(
                         "{}:profile:{}",
                         label,
-                        prof.file_name().map(|n| n.to_string_lossy()).unwrap_or_default()
+                        prof.file_name()
+                            .map(|n| n.to_string_lossy())
+                            .unwrap_or_default()
                     ),
                     &problem,
                 );
@@ -1958,7 +2029,11 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
                 .emit(&format!("[*]   profile: {}", scanner.current));
             let prof_path = prof.clone();
             scanner.scan_history(label, &prof_path.join("History"), "chromium");
-            scanner.scan_cookies(label, &prof_path.join("Network").join("Cookies"), "chromium");
+            scanner.scan_cookies(
+                label,
+                &prof_path.join("Network").join("Cookies"),
+                "chromium",
+            );
             scanner.scan_cookies(label, &prof_path.join("Cookies"), "chromium");
             scanner.scan_favicons(label, &prof_path.join("Favicons"), "chromium");
             scanner.scan_connection_records(label, &prof_path);
@@ -1990,10 +2065,9 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
         if refused.iter().any(|(_, r)| r.is_some()) {
             for (p, reason) in &refused {
                 if let Some(reason) = reason {
-                    scanner.r.could_not_run(
-                        &format!("firefox:profiles:{}", p.display()),
-                        reason,
-                    );
+                    scanner
+                        .r
+                        .could_not_run(&format!("firefox:profiles:{}", p.display()), reason);
                 }
             }
             continue;
@@ -2059,10 +2133,9 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
             if refused.iter().any(|(_, r)| r.is_some()) {
                 for (p, reason) in &refused {
                     if let Some(reason) = reason {
-                        scanner.r.could_not_run(
-                            &format!("firefox:profile:{}", p.display()),
-                            reason,
-                        );
+                        scanner
+                            .r
+                            .could_not_run(&format!("firefox:profile:{}", p.display()), reason);
                     }
                 }
                 continue;
@@ -2077,7 +2150,9 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
                 match is_ff_profile_dir(&prof) {
                     Ok(false) => continue,
                     Err(e) => {
-                        scanner.r.could_not_run(&format!("firefox:profile:{}", name), &e);
+                        scanner
+                            .r
+                            .could_not_run(&format!("firefox:profile:{}", name), &e);
                         continue;
                     }
                     Ok(true) => {}
@@ -2118,7 +2193,15 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
             // never searched, so nothing has been cleared for it.
             for (profile_name, reason) in &state.failures {
                 scanner.r.could_not_run(
-                    &format!("{} [{}]", check_name, if profile_name.is_empty() { "profile" } else { profile_name }),
+                    &format!(
+                        "{} [{}]",
+                        check_name,
+                        if profile_name.is_empty() {
+                            "profile"
+                        } else {
+                            profile_name
+                        }
+                    ),
                     reason,
                 );
             }
@@ -2142,7 +2225,9 @@ pub fn run_with(ctx: &mut ScanContext, cfg: &BrowserConfig) -> ModuleResult {
         let earliest = *scanner.seen_mtimes.iter().min().unwrap();
         let mut by_year: HashMap<i64, i64> = HashMap::new();
         for m in &scanner.seen_mtimes {
-            *by_year.entry(datetime::civil_from_unix_secs(*m).date.year).or_insert(0) += 1;
+            *by_year
+                .entry(datetime::civil_from_unix_secs(*m).date.year)
+                .or_insert(0) += 1;
         }
         let mut by_year_sorted: Vec<(i64, i64)> = by_year.into_iter().collect();
         by_year_sorted.sort();

@@ -50,7 +50,11 @@ pub fn local_temp_dir() -> Result<PathBuf, String> {
             }
         }
     } else {
-        candidates.extend(["/tmp", "/var/tmp", "/private/tmp"].iter().map(PathBuf::from));
+        candidates.extend(
+            ["/tmp", "/var/tmp", "/private/tmp"]
+                .iter()
+                .map(PathBuf::from),
+        );
     }
     for candidate in candidates {
         if path_problem(&candidate).is_none() && candidate.is_dir() {
@@ -70,14 +74,8 @@ pub fn path_problem(path: &Path) -> Option<String> {
     if !path.is_absolute() {
         return Some("relative path cannot be classified as local".to_string());
     }
-    if text
-        .replace('\\', "/")
-        .split('/')
-        .any(|part| part == "..")
-    {
-        return Some(
-            "parent-directory traversal cannot be classified as local".to_string(),
-        );
+    if text.replace('\\', "/").split('/').any(|part| part == "..") {
+        return Some("parent-directory traversal cannot be classified as local".to_string());
     }
 
     #[cfg(windows)]
@@ -104,7 +102,11 @@ pub fn path_problem(path: &Path) -> Option<String> {
                 return None;
             }
             Err(e) => {
-                return Some(format!("cannot safely inspect {}: {}", current.display(), e));
+                return Some(format!(
+                    "cannot safely inspect {}: {}",
+                    current.display(),
+                    e
+                ));
             }
         };
         if is_symlink_or_reparse(&info) {
@@ -115,8 +117,7 @@ pub fn path_problem(path: &Path) -> Option<String> {
             // traverse its target.
             #[cfg(target_os = "macos")]
             if let Some(canonical) = macos_system_alias(current, &info) {
-                let rest: Vec<&std::ffi::OsStr> =
-                    path.components().skip(index + 1 + 1).collect();
+                let rest: Vec<&std::ffi::OsStr> = path.components().skip(index + 1 + 1).collect();
                 let mut canonical_path = PathBuf::from(canonical);
                 for part in rest {
                     canonical_path.push(part);
@@ -232,11 +233,7 @@ pub fn walk_local(root: &Path, prune: &dyn Fn(&str) -> bool, handler: &mut dyn W
                         Err(e) => {
                             handler.onerror(WalkProblem {
                                 path: current.clone(),
-                                reason: format!(
-                                    "could not enumerate {}: {}",
-                                    current.display(),
-                                    e
-                                ),
+                                reason: format!("could not enumerate {}: {}", current.display(), e),
                             });
                             continue;
                         }
@@ -430,12 +427,22 @@ mod tests {
 
         let mut files: Vec<PathBuf> = Vec::new();
         let mut problems = 0;
-        struct H<'a> { files: &'a mut Vec<PathBuf>, problems: &'a mut i32 }
-        impl WalkHandler for H<'_> {
-            fn onerror(&mut self, _p: WalkProblem) { *self.problems += 1; }
-            fn files(&mut self, _d: &Path, fs: &[PathBuf]) { self.files.extend(fs.iter().cloned()); }
+        struct H<'a> {
+            files: &'a mut Vec<PathBuf>,
+            problems: &'a mut i32,
         }
-        let mut h = H { files: &mut files, problems: &mut problems };
+        impl WalkHandler for H<'_> {
+            fn onerror(&mut self, _p: WalkProblem) {
+                *self.problems += 1;
+            }
+            fn files(&mut self, _d: &Path, fs: &[PathBuf]) {
+                self.files.extend(fs.iter().cloned());
+            }
+        }
+        let mut h = H {
+            files: &mut files,
+            problems: &mut problems,
+        };
         walk_local(&dir, &|name: &str| name == "skipme", &mut h);
         let names: Vec<String> = files
             .iter()
@@ -450,7 +457,10 @@ mod tests {
 
     #[test]
     fn normpath_collapses() {
-        assert_eq!(normpath(Path::new("/tmp//a/./b")), PathBuf::from("/tmp/a/b"));
+        assert_eq!(
+            normpath(Path::new("/tmp//a/./b")),
+            PathBuf::from("/tmp/a/b")
+        );
         assert_eq!(normpath(Path::new("a/b/../c")), PathBuf::from("a/c"));
     }
 }
