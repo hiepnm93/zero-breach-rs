@@ -1185,7 +1185,8 @@ pub fn run(ctx: &mut ScanContext) -> ModuleResult {
 /// Per-check isolation: one failure must not cost the others.
 #[cfg(windows)]
 fn run_windows(ctx: &mut ScanContext, r: &mut ModuleResult) {
-    let checks: [(&str, fn(&mut ModuleResult, &mut ScanContext)); 5] = [
+    type Check = fn(&mut ModuleResult, &mut ScanContext);
+    let checks: [(&str, Check); 5] = [
         ("com-persistence", check_com_live),
         ("dns-cache", check_dns_cache_live),
         ("dns-log", check_dns_log_live),
@@ -1479,8 +1480,7 @@ fn enum_com_registrations() -> (Vec<ComEntry>, Vec<String>) {
         // ERROR_NO_MORE_ITEMS ends this iterator; any other error is an
         // ABORTED walk, not an exhausted one, and is recorded so a truncated
         // enumeration cannot pass as complete.
-        let mut index = 0u32;
-        for entry in base.enum_keys() {
+        for (index, entry) in base.enum_keys().enumerate() {
             let clsid = match entry {
                 Ok(k) => k,
                 Err(e) => {
@@ -1491,7 +1491,6 @@ fn enum_com_registrations() -> (Vec<ComEntry>, Vec<String>) {
                     break;
                 }
             };
-            index += 1;
             for kind in SERVER_KINDS {
                 let sub = format!("{}\\{}", clsid, kind);
                 let key = match base.open_subkey_with_flags(&sub, KEY_READ | view_flag) {
