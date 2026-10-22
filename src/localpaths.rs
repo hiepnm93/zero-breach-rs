@@ -117,9 +117,8 @@ pub fn path_problem(path: &Path) -> Option<String> {
             // traverse its target.
             #[cfg(target_os = "macos")]
             if let Some(canonical) = macos_system_alias(current, &info) {
-                let rest: Vec<&std::ffi::OsStr> = path.components().skip(index + 1 + 1).collect();
                 let mut canonical_path = PathBuf::from(canonical);
-                for part in rest {
+                for part in path.components().skip(index + 1 + 1) {
                     canonical_path.push(part);
                 }
                 return path_problem(&canonical_path);

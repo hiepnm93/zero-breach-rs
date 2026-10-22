@@ -1301,7 +1301,7 @@ fn check_known_paths_live(r: &mut ModuleResult, ctx: &mut ScanContext) {
 /// which includes the CURRENT DIRECTORY before System32, and users are told
 /// to run this tool from their Downloads folder. An absolute path is never
 /// resolved through that search.
-fn ps_exe() -> std::path::PathBuf {
+pub fn ps_exe() -> std::path::PathBuf {
     std::path::Path::new(&sysroot_default())
         .join("System32")
         .join("WindowsPowerShell")
