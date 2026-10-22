@@ -80,11 +80,11 @@ jobs:
             cp "target/${{ matrix.target }}/release/zero-breach" "$staging/"
           fi
       - name: Archive (tar.gz)
-        if: matrix.archive ends with '.tar.gz'
+        if: endsWith(matrix.archive, '.tar.gz')
         shell: bash
         run: tar czf "${{ matrix.archive }}" "zero-breach-${{ matrix.target }}"
       - name: Archive (zip)
-        if: matrix.archive ends with '.zip'
+        if: endsWith(matrix.archive, '.zip')
         shell: bash
         run: 7z a "${{ matrix.archive }}" "zero-breach-${{ matrix.target }}"
       - name: SHA-256
